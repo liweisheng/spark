@@ -45,6 +45,11 @@ sealed trait TaskEndReason
 @DeveloperApi
 case object Success extends TaskEndReason
 
+
+sealed trait PipelineReport
+@DeveloperApi
+case object PipelineRunning extends PipelineReport
+
 /**
  * :: DeveloperApi ::
  * Various possible reasons why a task failed.

@@ -49,7 +49,8 @@ private[spark] class TaskContextImpl(
     localProperties: Properties,
     @transient private val metricsSystem: MetricsSystem,
     // The default value is only used in tests.
-    override val taskMetrics: TaskMetrics = TaskMetrics.empty)
+    override val taskMetrics: TaskMetrics = TaskMetrics.empty,
+    val childrenStageIds: List[Int] = List.empty[Int])
   extends TaskContext
   with Logging {
 
@@ -153,6 +154,10 @@ private[spark] class TaskContextImpl(
 
   private[spark] override def getKillReason(): Option[String] = {
     reasonIfKilled
+  }
+
+  private[spark] override def getChildrenStageIds(): List[Int] = {
+    childrenStageIds
   }
 
   @GuardedBy("this")

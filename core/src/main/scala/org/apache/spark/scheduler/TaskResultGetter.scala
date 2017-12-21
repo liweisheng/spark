@@ -54,6 +54,14 @@ private[spark] class TaskResultGetter(sparkEnv: SparkEnv, scheduler: TaskSchedul
     }
   }
 
+  def enqueuePipelineTask(
+      taskSetManager: TaskSetManager,
+      tid: Long,
+      serializedData: ByteBuffer): Unit = {
+    val result = serializer.get().deserialize[PipelineStatus](serializedData)
+    scheduler.handlePipelineTaskStartup(taskSetManager, tid, result)
+
+  }
   def enqueueSuccessfulTask(
       taskSetManager: TaskSetManager,
       tid: Long,

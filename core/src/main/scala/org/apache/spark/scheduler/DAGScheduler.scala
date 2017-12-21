@@ -156,6 +156,8 @@ class DAGScheduler(
   // Stages we are running right now
   private[scheduler] val runningStages = new HashSet[Stage]
 
+  private[scheduler] val pipelineReadyStages = new HashSet[Stage]
+
   // Stages that must be resubmitted due to fetch failures
   private[scheduler] val failedStages = new HashSet[Stage]
 
@@ -213,6 +215,15 @@ class DAGScheduler(
    */
   def taskGettingResult(taskInfo: TaskInfo) {
     eventProcessLoop.post(GettingResultEvent(taskInfo))
+  }
+
+  def pipelineTaskRunning(
+      task: Task[_],
+      reason: PipelineReport,
+      pipelineStatus: PipelineStatus,
+      taskInfo: TaskInfo): Unit = {
+    eventProcessLoop.post(PipelineTaskEvent(task, reason, pipelineStatus, taskInfo))
+
   }
 
   /**
@@ -471,6 +482,10 @@ class DAGScheduler(
     missing.toList
   }
 
+  private def getChildStages(parent: Stage): List[Stage] = {
+    stageIdToStage.valuesIterator.filter(stage => stage.parents.contains(parent)).toList
+  }
+
   /**
    * Registers the given jobId among the jobs that need the given stage and
    * all of that stage's ancestors.
@@ -487,6 +502,25 @@ class DAGScheduler(
       }
     }
     updateJobIdStageIdMapsList(List(stage))
+  }
+
+  private def cleanupStateForJobAndIndependentStagesInPipeline(stage: Stage): Unit = {
+    if(!stageIdToStage.contains(stage.id)){
+      logError("No stage(stageId: %d) register in stageIdToStage".format(stage.id))
+    }else{
+      if (waitingStages.contains(stage)) {
+        logDebug("Removing stage %d from waiting set.".format(stage.id))
+        waitingStages -= stage
+        logDebug("after remove stage:%d, now waitingStages contains: %s ".format(stage.id,
+          waitingStages.map(stage => stage.id).toArray.mkString("[",",","]")))
+      }
+      if (failedStages.contains(stage)) {
+        logDebug("Removing stage %d from failed set.".format(stage.id))
+        failedStages -= stage
+        logDebug("after remove stage:%d, now failedStages contains: %s ".format(stage.id,
+          failedStages.map(stage => stage.id).toArray.mkString("[",",","]")))
+      }
+    }
   }
 
   /**
@@ -1116,6 +1150,82 @@ class DAGScheduler(
     }
   }
 
+  private[scheduler] def handlePipelineTaskEvent(event: PipelineTaskEvent): Unit = {
+    val task = event.task
+    val taskId = event.taskInfo.id
+    val stageID = task.stageId
+
+    if(!stageIdToStage.contains(stageID)){
+      return
+    }
+
+    val stage = stageIdToStage(stageID)
+    event.reason match {
+      case PipelineRunning =>
+        task match {
+          case rt: ResultTask[_, _] =>
+            val resultStage = stage.asInstanceOf[ResultStage]
+            resultStage.activeJob match {
+              case Some(job) =>
+                if(!job.pipelineTaskRunning(rt.outputId)){
+                  job.pipelineTaskRunning(rt.outputId) = true
+                  job.numFinished += 1
+
+                  if(job.numFinished == job.numPartitions){
+                    runningStages -= resultStage
+                    markStageAsPipelineReady(stage)
+                    cleanupStateForJobAndIndependentStagesInPipeline(stage)
+                  }
+                }
+              case None =>
+                logInfo("Ignoring result from " + rt + " because its job has been canceled")
+            }
+
+          case smt: ShuffleMapStage =>
+            val shuffleMapStage = stage.asInstanceOf[ShuffleMapStage]
+            val pipelineStatus = event.result.asInstanceOf[PipelineStatus]
+            val execID = pipelineStatus.location.executorId
+            logDebug("ShuffleMapTask pipeline start up on " + execID)
+
+            if(stageIdToStage(task.stageId).latestInfo.attemptId == task.stageAttemptId){
+              shuffleMapStage.pendingPartitions -= task.partitionId
+            }
+
+            if(failedEpoch.contains(execID) && smt.epoch <= failedEpoch(execID)){
+              logInfo(s"Ignoring possibly bogus $smt completion from executor $execID")
+            }else{
+              shuffleMapStage.setPipelineLoc(smt.partitionId, pipelineStatus)
+              shuffleMapStage.pendingPartitions -= task.partitionId
+            }
+
+            if(runningStages.contains(smt) && shuffleMapStage.pendingPartitions.isEmpty){
+              runningStages -= shuffleMapStage
+              logInfo("stage[id:%s, attempId:%s] finished in pipeline mode, looking for newly runnable stages".
+                format(shuffleMapStage.id, shuffleMapStage.latestInfo.attemptId))
+              logInfo("running: " + runningStages)
+              logInfo("waiting: " + waitingStages)
+              logInfo("failed: " + failedStages)
+
+              mapOutputTracker.registerPipelineStatuses(
+                shuffleMapStage.shuffleDep.shuffleId,
+                shuffleMapStage.pipelineLoc(),
+                changeEpoc = true)
+
+              if(!shuffleMapStage.isAvailable){
+                //Some task had failed in pipeline, we should resubmit before running next stage
+                logInfo("Resubmitting " + shuffleMapStage + " (" + shuffleMapStage.name +
+                  ") because some of its tasks had failed: " +
+                  shuffleMapStage.findMissingPartitions().mkString(", "))
+                submitStage(shuffleMapStage)
+              }else{
+                markStageAsPipelineReady(shuffleMapStage)
+                submitWaitingChildStages(shuffleMapStage)
+              }
+            }
+        }
+    }
+  }
+
   /**
    * Responds to a task finishing. This is called inside the event loop so it assumes that it can
    * modify the scheduler's internal state. Use taskEnded() to post a task end event from outside.
@@ -1446,6 +1556,21 @@ class DAGScheduler(
     }
   }
 
+  private def markStageAsPipelineReady(stage: Stage): Unit = {
+    val startupTime = stage.latestInfo.submissionTime match {
+      case Some(t) => "%.03f".format((clock.getTimeMillis() - t) / 1000.0)
+      case _ => "Unknown"
+    }
+
+    logInfo("$s (%s) become pipeline ready in %s s".format(stage, stage.name, startupTime))
+
+    if(failedStages.contains(stage)){
+      failedStages.remove(stage)
+    }
+
+    pipelineReadyStages.add(stage)
+  }
+
   /**
    * Marks a stage as finished and removes it from the list of running stages.
    */
@@ -1712,11 +1837,13 @@ private[scheduler] class DAGSchedulerEventProcessLoop(dagScheduler: DAGScheduler
     case GettingResultEvent(taskInfo) =>
       dagScheduler.handleGetTaskResult(taskInfo)
 
-    case completion: CompletionEvent =>
-      dagScheduler.handleTaskCompletion(completion)
-
     case TaskSetFailed(taskSet, reason, exception) =>
       dagScheduler.handleTaskSetFailed(taskSet, reason, exception)
+
+    case completion: CompletionEvent =>
+      dagScheduler.handleTaskCompletion(completion)
+    case pipelineTaskEvent: PipelineTaskEvent =>
+      dagScheduler.handlePipelineTaskEvent(pipelineTaskEvent)
 
     case ResubmitFailedStages =>
       dagScheduler.resubmitFailedStages()

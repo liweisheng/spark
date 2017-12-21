@@ -15,19 +15,32 @@
  * limitations under the License.
  */
 
-package org.apache.spark
+package org.apache.spark.shuffle.pipeline
 
-private[spark] object TaskState extends Enumeration {
+import org.apache.spark.util.collection.SizeTracker
 
-  val LAUNCHING, RUNNING, FINISHED, FAILED, KILLED, LOST, PIPELINE = Value
+import scala.collection.mutable.ArrayBuffer
 
-  private val FINISHED_STATES = Set(FINISHED, FAILED, KILLED, LOST)
 
-  type TaskState = Value
+private[spark] class SizeTrackingBuffer[T](initialCapacity: Int = 64)
+  extends SizeTracker{
+  import SizeTrackingBuffer._
 
-  def isFailed(state: TaskState): Boolean = (LOST == state) || (FAILED == state)
+  require(initialCapacity < MAX_CAPACITY, s"Can't make capacity bigger than ${MAX_CAPACITY} elements")
+  require(initialCapacity > 1, s"Invalid intial capacity: ${initialCapacity}")
 
-  def isFinished(state: TaskState): Boolean = FINISHED_STATES.contains(state)
+  private var buffer = new ArrayBuffer[T](initialCapacity)
 
-  def isPipeline(state : TaskState): Boolean = PIPELINE == state
+  def append(value: T): Unit = {
+    buffer += value
+    afterUpdate()
+  }
+
+  def iterator: Iterator[T] = {
+    buffer.iterator
+  }
+}
+
+private object SizeTrackingBuffer{
+  val MAX_CAPACITY = Int.MaxValue / 2
 }

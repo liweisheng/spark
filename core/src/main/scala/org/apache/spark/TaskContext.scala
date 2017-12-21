@@ -150,6 +150,8 @@ abstract class TaskContext extends Serializable {
    */
   def stageId(): Int
 
+  def getChildrenStageIds(): List[Int] = {List.empty}
+
   /**
    * The ID of the RDD partition that is computed by this task.
    */

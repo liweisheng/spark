@@ -15,19 +15,17 @@
  * limitations under the License.
  */
 
-package org.apache.spark
+package org.apache.spark.shuffle.pipeline
 
-private[spark] object TaskState extends Enumeration {
+trait SubPipeline[K, V]{
+  def stop()
+  def isStopped(): Boolean
+  def writeDataEvent(event : PipelineEvent[Product2[K,V]]): Long
 
-  val LAUNCHING, RUNNING, FINISHED, FAILED, KILLED, LOST, PIPELINE = Value
+  def writeNotifyEvent(event: PipelineEvent[Product2[K,V]]): Long
 
-  private val FINISHED_STATES = Set(FINISHED, FAILED, KILLED, LOST)
-
-  type TaskState = Value
-
-  def isFailed(state: TaskState): Boolean = (LOST == state) || (FAILED == state)
-
-  def isFinished(state: TaskState): Boolean = FINISHED_STATES.contains(state)
-
-  def isPipeline(state : TaskState): Boolean = PIPELINE == state
+  /**
+    * @return  (datablock, size)
+    */
+  def fetchPartitionData(part: Int): (PipelineDataBlock, Long)
 }

@@ -18,11 +18,12 @@
 package org.apache.spark.scheduler
 
 import scala.collection.mutable.HashSet
-
 import org.apache.spark.ShuffleDependency
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.BlockManagerId
 import org.apache.spark.util.CallSite
+
+import scala.runtime.Nothing$
 
 /**
  * ShuffleMapStages are intermediate stages in the execution DAG that produce data for a shuffle.
@@ -66,6 +67,8 @@ private[spark] class ShuffleMapStage(
    * (a single task might run multiple times).
    */
   private[this] val outputLocs = Array.fill[List[MapStatus]](numPartitions)(Nil)
+
+  private[this] val pipelineLocs = Array.fill[Option[PipelineStatus]](numPartitions)(None)
 
   override def toString: String = "ShuffleMapStage " + id
 
@@ -123,6 +126,22 @@ private[spark] class ShuffleMapStage(
     }
   }
 
+  def setPipelineLoc(partition: Int, pipelineStatus: PipelineStatus): Unit = {
+    val preStatus = pipelineLocs(partition)
+    pipelineLocs(partition) = Some(pipelineStatus)
+    if(preStatus.isEmpty){
+      _numAvailableOutputs += 1
+    }
+  }
+
+  def unsetPipelineLoc(partition: Int): Unit = {
+    val preStatus = pipelineLocs(partition)
+    if(preStatus.isDefined){
+      pipelineLocs(partition) = None
+      _numAvailableOutputs -= 1
+    }
+  }
+
   /**
    * Returns an array of [[MapStatus]] (index by partition id). For each partition, the returned
    * value contains only one (i.e. the first) [[MapStatus]]. If there is no entry for the partition,
@@ -130,6 +149,10 @@ private[spark] class ShuffleMapStage(
    */
   def outputLocInMapOutputTrackerFormat(): Array[MapStatus] = {
     outputLocs.map(_.headOption.orNull)
+  }
+
+  def pipelineLoc(): Array[PipelineStatus] = {
+    pipelineLocs.map(_.getOrElse(null))
   }
 
   /**

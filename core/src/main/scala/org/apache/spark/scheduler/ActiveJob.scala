@@ -59,5 +59,7 @@ private[spark] class ActiveJob(
   /** Which partitions of the stage have finished */
   val finished = Array.fill[Boolean](numPartitions)(false)
 
+  val pipelineTaskRunning = Array.fill[Boolean](numPartitions)(false)
+
   var numFinished = 0
 }

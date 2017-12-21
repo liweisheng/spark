@@ -100,6 +100,8 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       // Otherwise, try to buffer map outputs in a serialized form, since this is more efficient:
       new SerializedShuffleHandle[K, V](
         shuffleId, numMaps, dependency.asInstanceOf[ShuffleDependency[K, V, V]])
+    } else if(dependency.pipeline || dependency.isInstanceOf[SplitDependency]){
+      new PipelineShuffleHandle[K,V](shuffleId, numMaps, dependency.asInstanceOf[ShuffleDependency[K,V,V]])
     } else {
       // Otherwise, buffer map outputs in a deserialized form:
       new BaseShuffleHandle(shuffleId, numMaps, dependency)
@@ -145,6 +147,8 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
           mapId,
           context,
           env.conf)
+      case pipelineShuffleHandle: PipelineShuffleHandle[K @unchecked, V @unchecked] =>
+        throw new UnsupportedOperationException
       case other: BaseShuffleHandle[K @unchecked, V @unchecked, _] =>
         new SortShuffleWriter(shuffleBlockResolver, other, mapId, context)
     }
@@ -196,10 +200,31 @@ private[spark] object SortShuffleManager extends Logging {
       log.debug(s"Can't use serialized shuffle for shuffle $shufId because it has more than " +
         s"$MAX_SHUFFLE_OUTPUT_PARTITIONS_FOR_SERIALIZED_MODE partitions")
       false
-    } else {
+    } else if(dependency.pipeline){
+      log.debug(s"Can't use serialized shuffle for shuffle $shufId because it is a pipeline shuffle")
+      false
+    }else {
       log.debug(s"Can use serialized shuffle for shuffle $shufId")
       true
     }
+  }
+}
+
+/**
+  * Subclass of [[BaseShuffleHandle]], used to identify when we've chosen to use the
+  * pipeline shuffle.
+  */
+private[spark] class PipelineShuffleHandle[K,V](
+  shuffleId: Int,
+  numMaps: Int,
+  dependency: ShuffleDependency[K,V,V])
+extends BaseShuffleHandle(shuffleId, numMaps, dependency){
+  def isSplitDep: Boolean = {
+    return dependency.isInstanceOf[SplitDependency]
+  }
+
+  def isShuffleDep: Boolean = {
+    return !isSplitDep
   }
 }
 

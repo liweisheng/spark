@@ -702,6 +702,27 @@ private[spark] class TaskSetManager(
     }
   }
 
+  def handlePipelineTaskStartup(tid: Long, pipelineStatus: PipelineStatus): Unit = {
+    val info = taskInfos(tid)
+    val index = info.index
+    info.markRunningAsPipeline(clock.getTimeMillis())
+    removeRunningTask(tid)
+
+    if(!successful(index)){
+      tasksSuccessful += 1
+
+      logInfo(s"Task ${info.id} in stage ${taskSet.id} (TID ${info.taskId}) in running " +
+      s"as a pipeline task on ${info.host} (executor ${info.executorId})")
+      successful(index) = true
+      if(tasksSuccessful == numTasks){
+        isZombie = true
+      }
+    }
+
+    //TODO:
+    sched.dagScheduler.pipelineTaskRunning(tasks(index), PipelineRunning, pipelineStatus, info)
+  }
+
   /**
    * Marks a task as successful and notifies the DAGScheduler that the task has ended.
    */

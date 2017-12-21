@@ -25,21 +25,30 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable.{ArrayBuffer, HashMap, HashSet, Map}
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
-
 import org.apache.spark.broadcast.{Broadcast, BroadcastManager}
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcCallContext, RpcEndpoint, RpcEndpointRef, RpcEnv}
-import org.apache.spark.scheduler.MapStatus
+import org.apache.spark.scheduler.{MapStatus, PipelineStatus}
 import org.apache.spark.shuffle.MetadataFetchFailedException
 import org.apache.spark.storage.{BlockId, BlockManagerId, ShuffleBlockId}
 import org.apache.spark.util._
 
+import scala.collection.mutable
+
 private[spark] sealed trait MapOutputTrackerMessage
+
+private[spark] case class GetPipelineStatuses(shuffleId: Int)
+  extends MapOutputTrackerMessage
 private[spark] case class GetMapOutputStatuses(shuffleId: Int)
   extends MapOutputTrackerMessage
 private[spark] case object StopMapOutputTracker extends MapOutputTrackerMessage
 
+private[spark] sealed trait GetMessage
 private[spark] case class GetMapOutputMessage(shuffleId: Int, context: RpcCallContext)
+  extends GetMessage
+
+private[spark] case class GetPipelineMessage(shuffleId: Int, context: RpcCallContext)
+  extends GetMessage
 
 /** RpcEndpoint class for MapOutputTrackerMaster */
 private[spark] class MapOutputTrackerMasterEndpoint(
@@ -53,7 +62,10 @@ private[spark] class MapOutputTrackerMasterEndpoint(
       val hostPort = context.senderAddress.hostPort
       logInfo("Asked to send map output locations for shuffle " + shuffleId + " to " + hostPort)
       val mapOutputStatuses = tracker.post(new GetMapOutputMessage(shuffleId, context))
-
+    case GetPipelineStatuses(shuffleId: Int) =>
+      val hostPort = context.senderAddress.hostPort
+      logInfo(s"Asked to send pipeline locations for shuffle ${shuffleId} to ${hostPort}")
+      tracker.post(new GetPipelineMessage(shuffleId, context))
     case StopMapOutputTracker =>
       logInfo("MapOutputTrackerMasterEndpoint stopped!")
       context.reply(true)
@@ -82,6 +94,7 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
    * thread-safe map.
    */
   protected val mapStatuses: Map[Int, Array[MapStatus]]
+  protected val pipelineStatuses: Map[Int, Array[PipelineStatus]]
 
   /**
    * Incremented every time a fetch fails so that client nodes know to clear
@@ -92,6 +105,8 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
 
   /** Remembers which map output locations are currently being fetched on an executor. */
   private val fetching = new HashSet[Int]
+
+  private val pipelineFetching = new HashSet[Int]
 
   /**
    * Send a message to the trackerEndpoint and get its result within a default timeout, or
@@ -227,6 +242,65 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
     }
   }
 
+  /**
+    * Called from executor when task is running in pipeline mode.
+    */
+  def getPipelineStatus(shuffleId: Int): Array[PipelineStatus] = {
+    val statuses = pipelineStatuses.get(shuffleId).orNull
+    if (statuses == null) {
+      logInfo("Don't have map outputs for shuffle " + shuffleId + ", fetching them")
+      val startTime = System.currentTimeMillis
+      var fetchedStatuses: Array[PipelineStatus] = null
+      pipelineFetching.synchronized {
+        // Someone else is fetching it; wait for them to be done
+        while (pipelineFetching.contains(shuffleId)) {
+          try {
+            pipelineFetching.wait()
+          } catch {
+            case e: InterruptedException =>
+          }
+        }
+
+        // Either while we waited the fetch happened successfully, or
+        // someone fetched it in between the get and the fetching.synchronized.
+        fetchedStatuses = pipelineStatuses.get(shuffleId).orNull
+        if (fetchedStatuses == null) {
+          // We have to do the fetch, get others to wait for us.
+          pipelineFetching += shuffleId
+        }
+      }
+
+      if (fetchedStatuses == null) {
+        // We won the race to fetch the statuses; do so
+        logInfo("Doing the pipeline statuses fetch; tracker endpoint = " + trackerEndpoint)
+        // This try-finally prevents hangs due to timeouts:
+        try {
+          val fetchedBytes = askTracker[Array[Byte]](GetPipelineStatuses(shuffleId))
+          fetchedStatuses = MapOutputTracker.deserializePipelineStatuses(fetchedBytes)
+          logInfo(s"Got the pipeline locations for ${shuffleId}")
+          pipelineStatuses.put(shuffleId, fetchedStatuses)
+        } finally {
+          pipelineFetching.synchronized {
+            pipelineFetching -= shuffleId
+            pipelineFetching.notifyAll()
+          }
+        }
+      }
+      logDebug(s"Fetching pipeline statuses for shuffle $shuffleId took " +
+        s"${System.currentTimeMillis - startTime} ms")
+
+      if (fetchedStatuses != null) {
+        return fetchedStatuses
+      } else {
+        logError("Missing all pipeline locations for shuffle " + shuffleId)
+        throw new MetadataFetchFailedException(
+          shuffleId, -1, "Missing all pipeline locations for shuffle " + shuffleId)
+      }
+    } else {
+      return statuses
+    }
+  }
+
   /** Called to get current epoch number. */
   def getEpoch: Long = {
     epochLock.synchronized {
@@ -292,6 +366,8 @@ private[spark] class MapOutputTrackerMaster(conf: SparkConf,
   protected val mapStatuses = new ConcurrentHashMap[Int, Array[MapStatus]]().asScala
   private val cachedSerializedStatuses = new ConcurrentHashMap[Int, Array[Byte]]().asScala
 
+  protected val pipelineStatuses = new ConcurrentHashMap[Int,Array[PipelineStatus]]().asScala
+
   private val maxRpcMessageSize = RpcUtils.maxMessageSizeBytes(conf)
 
   // Kept in sync with cachedSerializedStatuses explicitly
@@ -304,7 +380,7 @@ private[spark] class MapOutputTrackerMaster(conf: SparkConf,
   private val shuffleIdLocks = new ConcurrentHashMap[Int, AnyRef]()
 
   // requests for map output statuses
-  private val mapOutputRequests = new LinkedBlockingQueue[GetMapOutputMessage]
+  private val mapOutputRequests = new LinkedBlockingQueue[GetMessage]
 
   // Thread pool used for handling map output status requests. This is a separate thread pool
   // to ensure we don't block the normal dispatcher threads.
@@ -327,7 +403,7 @@ private[spark] class MapOutputTrackerMaster(conf: SparkConf,
     throw new IllegalArgumentException(msg)
   }
 
-  def post(message: GetMapOutputMessage): Unit = {
+  def post(message: GetMessage): Unit = {
     mapOutputRequests.offer(message)
   }
 
@@ -338,18 +414,29 @@ private[spark] class MapOutputTrackerMaster(conf: SparkConf,
         while (true) {
           try {
             val data = mapOutputRequests.take()
-             if (data == PoisonPill) {
-              // Put PoisonPill back so that other MessageLoops can see it.
-              mapOutputRequests.offer(PoisonPill)
-              return
+            data match {
+              case mapOutputStatus: GetMapOutputMessage =>
+                if (data == PoisonPill) {
+                  // Put PoisonPill back so that other MessageLoops can see it.
+                  mapOutputRequests.offer(PoisonPill)
+                  return
+                }
+                val context = mapOutputStatus.context
+                val shuffleId = mapOutputStatus.shuffleId
+                val hostPort = context.senderAddress.hostPort
+                logDebug("Handling request to send map output locations for shuffle " + shuffleId +
+                  " to " + hostPort)
+                val mapOutputStatuses = getSerializedMapOutputStatuses(shuffleId)
+                context.reply(mapOutputStatuses)
+              case pipelineStatus: GetPipelineMessage =>
+                val context = pipelineStatus.context
+                val shuffleId = pipelineStatus.shuffleId
+                val hostPort = context.senderAddress.hostPort
+                logDebug(s"Handling request to send pipeline location for shuffle ${shuffleId} to ${hostPort}")
+                val pipelineStatuses = getSerializedPipelineStatuses(shuffleId)
+                context.reply(pipelineStatuses)
             }
-            val context = data.context
-            val shuffleId = data.shuffleId
-            val hostPort = context.senderAddress.hostPort
-            logDebug("Handling request to send map output locations for shuffle " + shuffleId +
-              " to " + hostPort)
-            val mapOutputStatuses = getSerializedMapOutputStatuses(shuffleId)
-            context.reply(mapOutputStatuses)
+
           } catch {
             case NonFatal(e) => logError(e.getMessage, e)
           }
@@ -385,6 +472,13 @@ private[spark] class MapOutputTrackerMaster(conf: SparkConf,
   def registerMapOutputs(shuffleId: Int, statuses: Array[MapStatus], changeEpoch: Boolean = false) {
     mapStatuses.put(shuffleId, statuses.clone())
     if (changeEpoch) {
+      incrementEpoch()
+    }
+  }
+
+  def registerPipelineStatuses(shuffleId: Int, pipeStatuses: Array[PipelineStatus], changeEpoc: Boolean = false): Unit = {
+    pipelineStatuses.put(shuffleId, pipeStatuses)
+    if(changeEpoc){
       incrementEpoch()
     }
   }
@@ -514,6 +608,24 @@ private[spark] class MapOutputTrackerMaster(conf: SparkConf,
     cachedSerializedBroadcast.clear()
   }
 
+  def getSerializedPipelineStatuses(shuffleId: Int): Array[Byte] = {
+    var statuses: Array[PipelineStatus] = null
+
+    var shuffleIdLock = shuffleIdLocks.get(shuffleId)
+    if(shuffleIdLock == null){
+      val newLock = new Object
+      val preLock = shuffleIdLocks.putIfAbsent(shuffleId, shuffleIdLock)
+      shuffleIdLock = if (preLock == null) newLock else preLock
+    }
+
+    statuses = pipelineStatuses.getOrElse(shuffleId, Array.empty[PipelineStatus])
+    shuffleIdLock.synchronized{
+      val bytes = MapOutputTracker.serializePipeStatues(statuses)
+      logInfo(s"Size of pipeline statuses for shuffle ${shuffleId} is ${bytes.length} bytes")
+      bytes
+    }
+  }
+
   def getSerializedMapOutputStatuses(shuffleId: Int): Array[Byte] = {
     var statuses: Array[MapStatus] = null
     var retBytes: Array[Byte] = null
@@ -595,6 +707,9 @@ private[spark] class MapOutputTrackerMaster(conf: SparkConf,
 private[spark] class MapOutputTrackerWorker(conf: SparkConf) extends MapOutputTracker(conf) {
   protected val mapStatuses: Map[Int, Array[MapStatus]] =
     new ConcurrentHashMap[Int, Array[MapStatus]]().asScala
+
+  protected val pipelineStatuses: mutable.Map[Int, Array[PipelineStatus]] =
+    new ConcurrentHashMap[Int,Array[PipelineStatus]]().asScala
 }
 
 private[spark] object MapOutputTracker extends Logging {
@@ -602,6 +717,32 @@ private[spark] object MapOutputTracker extends Logging {
   val ENDPOINT_NAME = "MapOutputTracker"
   private val DIRECT = 0
   private val BROADCAST = 1
+
+  def serializePipeStatues(statues: Array[PipelineStatus]): Array[Byte] = {
+    val baos = new ByteArrayOutputStream
+    val oos = new ObjectOutputStream(baos)
+
+    Utils.tryWithSafeFinally{
+      statues.synchronized{
+        oos.writeObject(statues)
+      }
+    } {
+      oos.close()
+    }
+
+    baos.toByteArray
+  }
+
+  def deserializePipelineStatuses(bytes: Array[Byte]): Array[PipelineStatus] = {
+    val bais = new ByteArrayInputStream(bytes)
+    val ois = new ObjectInputStream(bais)
+
+    Utils.tryWithSafeFinally{
+      ois.readObject()
+    } {
+      ois.close()
+    }.asInstanceOf[Array[PipelineStatus]]
+  }
 
   // Serialize an array of map output locations into an efficient byte format so that we can send
   // it to reduce tasks. We do this by compressing the serialized bytes using GZIP. They will

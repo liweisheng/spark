@@ -15,19 +15,27 @@
  * limitations under the License.
  */
 
-package org.apache.spark
+package org.apache.spark.scheduler
 
-private[spark] object TaskState extends Enumeration {
+import java.io.{Externalizable, ObjectInput, ObjectOutput}
 
-  val LAUNCHING, RUNNING, FINISHED, FAILED, KILLED, LOST, PIPELINE = Value
+import org.apache.spark.storage.BlockManagerId
 
-  private val FINISHED_STATES = Set(FINISHED, FAILED, KILLED, LOST)
+private[spark] class PipelineStatus(
+    private[this] var mapId: Int,
+    private[this] var loc: BlockManagerId)
+  extends Externalizable {
 
-  type TaskState = Value
+  def location: BlockManagerId = loc
+  def mapPartitionId: Int = mapId
 
-  def isFailed(state: TaskState): Boolean = (LOST == state) || (FAILED == state)
+  override def readExternal(in: ObjectInput): Unit = {
+    mapId = in.readInt()
+    BlockManagerId(in)
+  }
 
-  def isFinished(state: TaskState): Boolean = FINISHED_STATES.contains(state)
-
-  def isPipeline(state : TaskState): Boolean = PIPELINE == state
+  override def writeExternal(out: ObjectOutput): Unit = {
+    out.writeInt(mapId)
+    loc.writeExternal(out)
+  }
 }

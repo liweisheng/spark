@@ -173,6 +173,15 @@ private[spark] class CoarseGrainedExecutorBackend(
 }
 
 private[spark] object CoarseGrainedExecutorBackend extends Logging {
+  @volatile private var backend : CoarseGrainedExecutorBackend = _
+
+  def set(b : CoarseGrainedExecutorBackend) = {
+    backend = b
+  }
+
+  def get : CoarseGrainedExecutorBackend = {
+    backend
+  }
 
   private def run(
       driverUrl: String,

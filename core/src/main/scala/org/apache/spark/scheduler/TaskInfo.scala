@@ -47,6 +47,8 @@ class TaskInfo(
    */
   var gettingResultTime: Long = 0
 
+  var runningAsPipelineTime: Long = 0
+
   /**
    * Intermediate updates to accumulables during this task. Note that it is valid for the same
    * accumulable to be updated multiple times in a single task or for two accumulables with the
@@ -70,8 +72,15 @@ class TaskInfo(
 
   var killed = false
 
+  var runAsPipeline = false
+
   private[spark] def markGettingResult(time: Long) {
     gettingResultTime = time
+  }
+
+  private[spark] def markRunningAsPipeline(time: Long): Unit ={
+    runAsPipeline = true;
+    runningAsPipelineTime = time
   }
 
   private[spark] def markFinished(state: TaskState, time: Long) {
@@ -82,6 +91,8 @@ class TaskInfo(
       failed = true
     } else if (state == TaskState.KILLED) {
       killed = true
+    } else if (state == TaskState.PIPELINE) {
+      runAsPipeline = true
     }
   }
 
@@ -89,12 +100,15 @@ class TaskInfo(
 
   def finished: Boolean = finishTime != 0
 
-  def successful: Boolean = finished && !failed && !killed
+  def successful: Boolean = (runAsPipeline || finished) && !failed && !killed
 
   def running: Boolean = !finished
 
   def status: String = {
     if (running) {
+      if (runAsPipeline){
+        return "RUNNING AS PIPELINE"
+      }
       if (gettingResult) {
         "GET RESULT"
       } else {

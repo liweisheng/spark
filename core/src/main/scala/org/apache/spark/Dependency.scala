@@ -73,7 +73,8 @@ class ShuffleDependency[K: ClassTag, V: ClassTag, C: ClassTag](
     val serializer: Serializer = SparkEnv.get.serializer,
     val keyOrdering: Option[Ordering[K]] = None,
     val aggregator: Option[Aggregator[K, V, C]] = None,
-    val mapSideCombine: Boolean = false)
+    val mapSideCombine: Boolean = false,
+    val pipeline: Boolean = false)
   extends Dependency[Product2[K, V]] {
 
   override def rdd: RDD[Product2[K, V]] = _rdd.asInstanceOf[RDD[Product2[K, V]]]
@@ -91,6 +92,32 @@ class ShuffleDependency[K: ClassTag, V: ClassTag, C: ClassTag](
     shuffleId, _rdd.partitions.length, this)
 
   _rdd.sparkContext.cleaner.foreach(_.registerShuffleForCleanup(this))
+}
+
+@DeveloperApi
+class SplitDependency[K: ClassTag, V: ClassTag](
+    @transient private val _rdd: RDD[_ <: Product2[K, V]],
+    val partitioners: Array[Partitioner],
+    override val serializer: Serializer = SparkEnv.get.serializer,
+    var splits: Array[Int] = Array.empty,
+    var splitsAliases: Array[AnyRef] = Array.empty,
+    val splitIndex: Int,
+    val outputSelector: OutputSelector[K, _])
+  extends ShuffleDependency[K,V,V](null, null, serializer, null, null, null, true) {
+
+  if(splits.isEmpty){
+    splits = (0 until partitioners.length).toArray
+  }
+  if(splitsAliases.isEmpty){splitsAliases = splits.asInstanceOf[Array[AnyRef]]}
+
+  require(splitIndex < partitioners.length, s"split index ${splitIndex} is bigger than ${partitioners.length}")
+  require(splits.length == partitioners.length,
+    s"splits length:${splits.length} is not equal with partitioner length:${partitioners.length}")
+
+  override def rdd: RDD[Product2[K, V]] = _rdd.asInstanceOf[RDD[Product2[K, V]]]
+
+  override val shuffleHandle: ShuffleHandle = rdd.context.env.shuffleManager.registerShuffle(
+    shuffleId, _rdd.partitions.length, this)
 }
 
 

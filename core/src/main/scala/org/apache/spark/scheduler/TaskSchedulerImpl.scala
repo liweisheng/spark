@@ -423,6 +423,10 @@ private[spark] class TaskSchedulerImpl private[scheduler](
               } else if (Set(TaskState.FAILED, TaskState.KILLED, TaskState.LOST).contains(state)) {
                 taskResultGetter.enqueueFailedTask(taskSet, tid, state, serializedData)
               }
+            }else if (TaskState.isPipeline(state)){
+              cleanupPipelineTaskState(tid)
+              taskSet.removeRunningTask(tid)
+
             }
           case None =>
             logError(
@@ -466,6 +470,13 @@ private[spark] class TaskSchedulerImpl private[scheduler](
 
   def handleTaskGettingResult(taskSetManager: TaskSetManager, tid: Long): Unit = synchronized {
     taskSetManager.handleTaskGettingResult(tid)
+  }
+
+  def handlePipelineTaskStartup(
+      taskSetManager: TaskSetManager,
+      tid: Long,
+      pipelineStatus: PipelineStatus):Unit = synchronized{
+
   }
 
   def handleSuccessfulTask(
@@ -589,6 +600,10 @@ private[spark] class TaskSchedulerImpl private[scheduler](
     taskIdToExecutorId.remove(tid).foreach { executorId =>
       executorIdToRunningTaskIds.get(executorId).foreach { _.remove(tid) }
     }
+  }
+
+  private def cleanupPipelineTaskState(tid: Long): Unit = {
+    taskIdToTaskSetManager.remove(tid)
   }
 
   /**

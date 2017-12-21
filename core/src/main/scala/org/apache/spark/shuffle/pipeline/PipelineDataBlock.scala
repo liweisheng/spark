@@ -15,19 +15,17 @@
  * limitations under the License.
  */
 
-package org.apache.spark
+package org.apache.spark.shuffle.pipeline
 
-private[spark] object TaskState extends Enumeration {
+import java.nio.file.Path
 
-  val LAUNCHING, RUNNING, FINISHED, FAILED, KILLED, LOST, PIPELINE = Value
 
-  private val FINISHED_STATES = Set(FINISHED, FAILED, KILLED, LOST)
+trait PipelineDataBlock
 
-  type TaskState = Value
+case class InMemoryDataBlock[DATATYPE](
+  val buffer: SizeTrackingBuffer[PipelineEvent[DATATYPE]]
+) extends PipelineDataBlock
 
-  def isFailed(state: TaskState): Boolean = (LOST == state) || (FAILED == state)
-
-  def isFinished(state: TaskState): Boolean = FINISHED_STATES.contains(state)
-
-  def isPipeline(state : TaskState): Boolean = PIPELINE == state
-}
+case class OnDiskFileBlock(
+  val filePath: Path
+) extends PipelineDataBlock
