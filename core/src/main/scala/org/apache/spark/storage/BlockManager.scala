@@ -20,6 +20,7 @@ package org.apache.spark.storage
 import java.io._
 import java.nio.ByteBuffer
 import java.nio.channels.Channels
+import java.util.concurrent.ConcurrentHashMap
 
 import scala.collection.mutable
 import scala.collection.mutable.HashMap
@@ -28,7 +29,6 @@ import scala.concurrent.duration._
 import scala.reflect.ClassTag
 import scala.util.Random
 import scala.util.control.NonFatal
-
 import org.apache.spark._
 import org.apache.spark.executor.{DataReadMethod, ShuffleWriteMetrics}
 import org.apache.spark.internal.Logging
@@ -41,6 +41,7 @@ import org.apache.spark.network.shuffle.protocol.ExecutorShuffleInfo
 import org.apache.spark.rpc.RpcEnv
 import org.apache.spark.serializer.{SerializerInstance, SerializerManager}
 import org.apache.spark.shuffle.ShuffleManager
+import org.apache.spark.shuffle.pipeline.{PipelineManager, PipelineManager$}
 import org.apache.spark.storage.memory._
 import org.apache.spark.unsafe.Platform
 import org.apache.spark.util._
@@ -198,6 +199,9 @@ private[spark] class BlockManager(
   private var lastPeerFetchTime = 0L
 
   private var blockReplicationPolicy: BlockReplicationPolicy = _
+
+  private[this] var pipelineOutputManagerMap = new ConcurrentHashMap[PipelineManagerId, PipelineManager[_,_]]
+  private[this] val lock = new Object
 
   /**
    * Initializes the BlockManager with the given appId. This is not performed in the constructor as
@@ -1471,6 +1475,24 @@ private[spark] class BlockManager(
     blockInfoManager.unlock(blockId)
     data.dispose()
   }
+
+  def getPipelineManager(pipelineManagerId: PipelineManagerId): PipelineManager[_, _] = {
+    var m: PipelineManager[_,_] = null
+    while((m = pipelineOutputManagerMap.get(pipelineManagerId)) == null){
+      lock.synchronized{
+        lock.wait()
+      }
+    }
+    m
+  }
+
+  def setPipelineManager(pipelineManagerId: PipelineManagerId, pipelineOutputManager: PipelineManager[_, _]) = {
+    pipelineOutputManagerMap.put(pipelineManagerId, pipelineOutputManager)
+    lock.synchronized(
+      lock.notifyAll()
+    )
+  }
+
 
   def stop(): Unit = {
     blockTransferService.close()

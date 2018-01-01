@@ -100,15 +100,15 @@ class SplitDependency[K: ClassTag, V: ClassTag](
     val partitioners: Array[Partitioner],
     override val serializer: Serializer = SparkEnv.get.serializer,
     var splits: Array[Int] = Array.empty,
-    var splitsAliases: Array[AnyRef] = Array.empty,
+    var splitsAliases: Array[Any] = Array.empty,
     val splitIndex: Int,
     val outputSelector: OutputSelector[K, _])
-  extends ShuffleDependency[K,V,V](null, null, serializer, null, null, null, true) {
+  extends ShuffleDependency[K,V,V](null, null, serializer, null, null, false, true) {
 
   if(splits.isEmpty){
     splits = (0 until partitioners.length).toArray
   }
-  if(splitsAliases.isEmpty){splitsAliases = splits.asInstanceOf[Array[AnyRef]]}
+  if(splitsAliases.isEmpty){splitsAliases = splits.asInstanceOf[Array[Any]]}
 
   require(splitIndex < partitioners.length, s"split index ${splitIndex} is bigger than ${partitioners.length}")
   require(splits.length == partitioners.length,

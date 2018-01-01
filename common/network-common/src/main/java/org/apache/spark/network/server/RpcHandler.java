@@ -55,6 +55,10 @@ public abstract class RpcHandler {
    */
   public abstract StreamManager getStreamManager();
 
+  public ReadViewManager getReadViewManager(){
+    throw new UnsupportedOperationException("getReadViewManager is not supported");
+  }
+
   /**
    * Receives an RPC message that does not expect a reply. The default implementation will
    * call "{@link #receive(TransportClient, ByteBuffer, RpcResponseCallback)}" and log a warning if

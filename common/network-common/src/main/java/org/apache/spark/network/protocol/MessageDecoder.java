@@ -80,6 +80,15 @@ public final class MessageDecoder extends MessageToMessageDecoder<ByteBuf> {
       case StreamFailure:
         return StreamFailure.decode(in);
 
+      case PipelineSegmentFetchRequest:
+        return PipelineSegmentFetchRequest.decode(in);
+
+      case PipelineSegmentFetchSuccess:
+        return PipelineSegmentFetchSuccess.decode(in);
+
+      case PipelineSegmentFetchFailure:
+        return PipelineSegmentFetchFailure.decode(in);
+
       default:
         throw new IllegalArgumentException("Unexpected message type: " + msgType);
     }

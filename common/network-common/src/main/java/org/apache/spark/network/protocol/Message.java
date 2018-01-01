@@ -37,7 +37,8 @@ public interface Message extends Encodable {
     ChunkFetchRequest(0), ChunkFetchSuccess(1), ChunkFetchFailure(2),
     RpcRequest(3), RpcResponse(4), RpcFailure(5),
     StreamRequest(6), StreamResponse(7), StreamFailure(8),
-    OneWayMessage(9), User(-1);
+    OneWayMessage(9), PipelineSegmentFetchRequest(10), PipelineSegmentFetchSuccess(11),
+    PipelineSegmentFetchFailure(12), User(-1);
 
     private final byte id;
 
@@ -65,6 +66,9 @@ public interface Message extends Encodable {
         case 7: return StreamResponse;
         case 8: return StreamFailure;
         case 9: return OneWayMessage;
+        case 10: return PipelineSegmentFetchRequest;
+        case 11: return PipelineSegmentFetchSuccess;
+        case 12: return PipelineSegmentFetchFailure;
         case -1: throw new IllegalArgumentException("User type messages cannot be decoded.");
         default: throw new IllegalArgumentException("Unknown message type: " + id);
       }

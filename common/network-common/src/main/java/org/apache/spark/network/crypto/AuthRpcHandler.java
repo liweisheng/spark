@@ -24,6 +24,7 @@ import com.google.common.base.Throwables;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
+import org.apache.spark.network.server.ReadViewManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -147,6 +148,11 @@ class AuthRpcHandler extends RpcHandler {
   @Override
   public StreamManager getStreamManager() {
     return delegate.getStreamManager();
+  }
+
+  @Override
+  public ReadViewManager getReadViewManager() {
+    return delegate.getReadViewManager();
   }
 
   @Override

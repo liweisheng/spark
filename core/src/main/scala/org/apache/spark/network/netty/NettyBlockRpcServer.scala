@@ -22,15 +22,15 @@ import java.nio.ByteBuffer
 import scala.collection.JavaConverters._
 import scala.language.existentials
 import scala.reflect.ClassTag
-
 import org.apache.spark.internal.Logging
 import org.apache.spark.network.BlockDataManager
 import org.apache.spark.network.buffer.{ManagedBuffer, NioManagedBuffer}
 import org.apache.spark.network.client.{RpcResponseCallback, TransportClient}
-import org.apache.spark.network.server.{OneForOneStreamManager, RpcHandler, StreamManager}
-import org.apache.spark.network.shuffle.protocol.{BlockTransferMessage, OpenBlocks, StreamHandle, UploadBlock}
+import org.apache.spark.network.server.{OneForOneStreamManager, ReadViewManager, RpcHandler, StreamManager}
+import org.apache.spark.network.shuffle.protocol._
 import org.apache.spark.serializer.Serializer
-import org.apache.spark.storage.{BlockId, StorageLevel}
+import org.apache.spark.shuffle.pipeline.PipelineManager
+import org.apache.spark.storage.{BlockId, BlockManager, PipelineManagerId, StorageLevel}
 
 /**
  * Serves requests to open blocks by simply registering one chunk per block requested.
@@ -46,6 +46,10 @@ class NettyBlockRpcServer(
   extends RpcHandler with Logging {
 
   private val streamManager = new OneForOneStreamManager()
+
+  private val readViewManager = new ReadViewManager()
+
+  private var pipelineManager: PipelineManager[_, _] = _
 
   override def receive(
       client: TransportClient,
@@ -75,8 +79,24 @@ class NettyBlockRpcServer(
         val blockId = BlockId(uploadBlock.blockId)
         blockManager.putBlockData(blockId, data, level, classTag)
         responseContext.onSuccess(ByteBuffer.allocate(0))
+      case openPipeline: OpenPipeline =>
+        val pipelineManagerId = BlockId.apply(openPipeline.pipelineManagerId).asInstanceOf[PipelineManagerId]
+        pipelineManager = blockManager.asInstanceOf[BlockManager].getPipelineManager(pipelineManagerId)
+        val (subPipelineReadViewId, lastSyncId) = pipelineManager.openSubPipeline(
+          openPipeline.subPipelineIndex, openPipeline.reduceId, openPipeline.syncId
+        )
+
+        readViewManager.registPipelineReadView(subPipelineReadViewId, pipelineManagerId.name,
+          pipelineManager.getSubPipelineReaderView(subPipelineReadViewId))
+
+        logInfo(s"OpenPipeline ${openPipeline.toString} response with uniqueReaderViewId:$subPipelineReadViewId")
+        responseContext.onSuccess(
+          new PipelineReadViewCreate(subPipelineReadViewId, Math.max(openPipeline.syncId, lastSyncId)).toByteBuffer
+        )
     }
   }
 
   override def getStreamManager(): StreamManager = streamManager
+
+  override def getReadViewManager: ReadViewManager = readViewManager
 }
