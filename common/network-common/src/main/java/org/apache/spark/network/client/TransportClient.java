@@ -32,15 +32,12 @@ import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
 import com.google.common.util.concurrent.SettableFuture;
 import io.netty.channel.Channel;
+import org.apache.spark.network.protocol.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.spark.network.buffer.NioManagedBuffer;
-import org.apache.spark.network.protocol.ChunkFetchRequest;
-import org.apache.spark.network.protocol.OneWayMessage;
-import org.apache.spark.network.protocol.RpcRequest;
-import org.apache.spark.network.protocol.StreamChunkId;
-import org.apache.spark.network.protocol.StreamRequest;
+
 import static org.apache.spark.network.util.NettyUtils.getRemoteAddress;
 
 /**
@@ -160,6 +157,37 @@ public class TransportClient implements Closeable {
           logger.error("Uncaught exception in RPC response callback handler!", e);
         }
       }
+    });
+  }
+
+  public void fetchPipelineSegment(
+      String pipelineManagerId,
+      Long readViewId,
+      Long fetchId,
+      PipelineSegmentReceiveCallback callback){
+    long startTime = System.currentTimeMillis();
+    PipelineSegmentId pipelineSegmentId = new PipelineSegmentId(pipelineManagerId, readViewId, fetchId);
+
+    handler.addFetchPipelineSegmentRequest(pipelineSegmentId, callback);
+
+    PipelineSegmentFetchRequest request = new PipelineSegmentFetchRequest(pipelineManagerId, readViewId, fetchId);
+    channel.writeAndFlush(request).addListener(future -> {
+      if(future.isSuccess()){
+        long timeTaken = System.currentTimeMillis() - startTime;
+        if(logger.isTraceEnabled()){
+          logger.trace("Sending request {} to {} took {} ms", pipelineSegmentId.toString(),
+            getRemoteAddress(channel), timeTaken);
+        }
+      }else{
+        String errMsg = String.format("Failed to send request(%s:%s:%s) to %s: %s",
+                pipelineSegmentId.pipelineManagerId, pipelineSegmentId.readViewId, pipelineSegmentId.fetchId,
+                getRemoteAddress(channel), future.cause());
+        logger.error(errMsg);
+        handler.removePipelineSegmentFetchRequest(pipelineSegmentId);
+        channel.close();
+        callback.onFailure(fetchId, new IOException(errMsg, future.cause()));
+      }
+
     });
   }
 

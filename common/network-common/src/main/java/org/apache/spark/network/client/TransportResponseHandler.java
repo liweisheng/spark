@@ -26,17 +26,10 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import com.google.common.annotations.VisibleForTesting;
 import io.netty.channel.Channel;
+import org.apache.spark.network.protocol.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.spark.network.protocol.ChunkFetchFailure;
-import org.apache.spark.network.protocol.ChunkFetchSuccess;
-import org.apache.spark.network.protocol.ResponseMessage;
-import org.apache.spark.network.protocol.RpcFailure;
-import org.apache.spark.network.protocol.RpcResponse;
-import org.apache.spark.network.protocol.StreamChunkId;
-import org.apache.spark.network.protocol.StreamFailure;
-import org.apache.spark.network.protocol.StreamResponse;
 import org.apache.spark.network.server.MessageHandler;
 import static org.apache.spark.network.util.NettyUtils.getRemoteAddress;
 import org.apache.spark.network.util.TransportFrameDecoder;
@@ -54,6 +47,8 @@ public class TransportResponseHandler extends MessageHandler<ResponseMessage> {
 
   private final Map<StreamChunkId, ChunkReceivedCallback> outstandingFetches;
 
+  private final Map<PipelineSegmentId, PipelineSegmentReceiveCallback> outstandingPipelineSegmentFetchs;
+
   private final Map<Long, RpcResponseCallback> outstandingRpcs;
 
   private final Queue<StreamCallback> streamCallbacks;
@@ -66,6 +61,7 @@ public class TransportResponseHandler extends MessageHandler<ResponseMessage> {
     this.channel = channel;
     this.outstandingFetches = new ConcurrentHashMap<>();
     this.outstandingRpcs = new ConcurrentHashMap<>();
+    this.outstandingPipelineSegmentFetchs = new ConcurrentHashMap<>();
     this.streamCallbacks = new ConcurrentLinkedQueue<>();
     this.timeOfLastRequestNs = new AtomicLong(0);
   }
@@ -75,8 +71,19 @@ public class TransportResponseHandler extends MessageHandler<ResponseMessage> {
     outstandingFetches.put(streamChunkId, callback);
   }
 
+  public void addFetchPipelineSegmentRequest(
+      PipelineSegmentId pipelineSegmentId,
+      PipelineSegmentReceiveCallback callback){
+    updateTimeOfLastRequest();
+    outstandingPipelineSegmentFetchs.put(pipelineSegmentId, callback);
+  }
+
   public void removeFetchRequest(StreamChunkId streamChunkId) {
     outstandingFetches.remove(streamChunkId);
+  }
+
+  public void removePipelineSegmentFetchRequest(PipelineSegmentId pipelineSegmentId){
+    outstandingPipelineSegmentFetchs.remove(pipelineSegmentId);
   }
 
   public void addRpcRequest(long requestId, RpcResponseCallback callback) {
@@ -110,6 +117,10 @@ public class TransportResponseHandler extends MessageHandler<ResponseMessage> {
       entry.getValue().onFailure(cause);
     }
 
+    for(Map.Entry<PipelineSegmentId, PipelineSegmentReceiveCallback> enry: outstandingPipelineSegmentFetchs.entrySet()){
+      enry.getValue().onFailure(enry.getKey().fetchId, cause);
+    }
+
     // It's OK if new fetches appear, as they will fail immediately.
     outstandingFetches.clear();
     outstandingRpcs.clear();
@@ -141,7 +152,37 @@ public class TransportResponseHandler extends MessageHandler<ResponseMessage> {
 
   @Override
   public void handle(ResponseMessage message) throws Exception {
-    if (message instanceof ChunkFetchSuccess) {
+    if(message instanceof  PipelineSegmentFetchSuccess){
+      PipelineSegmentFetchSuccess resp = (PipelineSegmentFetchSuccess)message;
+      PipelineSegmentId pipelineSegmentId = new PipelineSegmentId(
+              resp.pipelineManagerId, resp.readViewId, resp.fetchId);
+      PipelineSegmentReceiveCallback callback = outstandingPipelineSegmentFetchs.get(pipelineSegmentId);
+
+      if(callback == null) {
+        logger.warn("Ignoring response for pipeline fetch {} from {} since it is not outstanding",
+                pipelineSegmentId.toString(), getRemoteAddress(channel));
+        resp.body().release();
+      } else{
+        outstandingPipelineSegmentFetchs.remove(pipelineSegmentId);
+        callback.onSuccess(pipelineSegmentId.fetchId, resp.body());
+        resp.body().release();
+      }
+    } else if(message instanceof PipelineSegmentFetchFailure){
+      PipelineSegmentFetchFailure resp = (PipelineSegmentFetchFailure)message;
+      PipelineSegmentId pipelineSegmentId = new PipelineSegmentId(
+              resp.pipelineManagerId, resp.readViewId, resp.fetchId);
+      PipelineSegmentReceiveCallback callback = outstandingPipelineSegmentFetchs.get(pipelineSegmentId);
+
+      if(callback == null) {
+        logger.warn("Ignoring response for pipeline fetch {} from {} since it is not outstanding",
+                pipelineSegmentId.toString(), getRemoteAddress(channel));
+      } else{
+        outstandingPipelineSegmentFetchs.remove(pipelineSegmentId);
+        callback.onFailure(pipelineSegmentId.fetchId, new PipelineSegmentFetchFailureException(
+          "Failure while fetching " + pipelineSegmentId.pipelineManagerId + ": " + pipelineSegmentId.readViewId
+                + ": " + pipelineSegmentId.fetchId + ": " + resp.errorString));
+      }
+    } else if (message instanceof ChunkFetchSuccess) {
       ChunkFetchSuccess resp = (ChunkFetchSuccess) message;
       ChunkReceivedCallback listener = outstandingFetches.get(resp.streamChunkId);
       if (listener == null) {

@@ -25,7 +25,8 @@ import org.apache.spark.util.io.ChunkedByteBufferOutputStream
 private[spark] class PipelineEvent[DATATYPE](
     val eventType: PipelineEvent.EvenType,
     val data: DATATYPE,
-    val nonData: AnyRef){
+    val nonData: Any,
+    val eventTime: Long){
   import PipelineEvent._
 
   def isData: Boolean = {
@@ -39,24 +40,6 @@ private[spark] class PipelineEvent[DATATYPE](
   def isWaterMark: Boolean = {
     eventType == WATERMARK
   }
-
-  def dataOutputStream(chunkSize: Int, allocator: Int => ByteBuffer) : ChunkedByteBufferOutputStream = {
-     require(eventType == DATA)
-     val cbos = new ChunkedByteBufferOutputStream(chunkSize, allocator);
-     cbos.write(Array.fill[Byte](1)(eventType))
-     cbos
-  }
-
-  def nonDataAsBytes(): Array[Byte] = {
-     require(eventType != DATA)
-
-     val baos = new ByteArrayOutputStream()
-     baos.write(Array.fill[Byte](1)(eventType))
-     val oos = new ObjectOutputStream(baos)
-     oos.writeObject(nonData)
-     oos.flush()
-     baos.toByteArray
-  }
 }
 
 private[spark] object PipelineEvent {
@@ -67,5 +50,5 @@ private[spark] object PipelineEvent {
   val WATERMARK: EvenType = 2.asInstanceOf[Byte]
   val BLOCKEND: EvenType = 3.asInstanceOf[Byte]
 
-  val BLOCK_END_EVENT: PipelineEvent[_] = new PipelineEvent[_](null, BLOCKEND, null)
+  val BLOCK_END_EVENT: PipelineEvent[Any] = new PipelineEvent[Any](BLOCKEND, null, null, Long.MaxValue)
 }

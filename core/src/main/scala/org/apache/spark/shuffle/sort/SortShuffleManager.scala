@@ -100,7 +100,7 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       // Otherwise, try to buffer map outputs in a serialized form, since this is more efficient:
       new SerializedShuffleHandle[K, V](
         shuffleId, numMaps, dependency.asInstanceOf[ShuffleDependency[K, V, V]])
-    } else if(dependency.pipeline || dependency.isInstanceOf[SplitDependency]){
+    } else if(dependency.pipeline || dependency.isInstanceOf[SplitDependency[K, V]]){
       new PipelineShuffleHandle[K,V](shuffleId, numMaps, dependency.asInstanceOf[ShuffleDependency[K,V,V]])
     } else {
       // Otherwise, buffer map outputs in a deserialized form:
@@ -220,7 +220,7 @@ private[spark] class PipelineShuffleHandle[K,V](
   dependency: ShuffleDependency[K,V,V])
 extends BaseShuffleHandle(shuffleId, numMaps, dependency){
   def isSplitDep: Boolean = {
-    return dependency.isInstanceOf[SplitDependency]
+    return dependency.isInstanceOf[SplitDependency[K, V]]
   }
 
   def isShuffleDep: Boolean = {

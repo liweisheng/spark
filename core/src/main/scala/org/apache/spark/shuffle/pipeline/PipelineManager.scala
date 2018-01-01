@@ -17,31 +17,44 @@
 
 package org.apache.spark.shuffle.pipeline
 
-import org.apache.spark.{OutputSelector, ShuffleDependency, SplitDependency, TaskContext}
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
+
+import org.apache.spark.shuffle.pipeline.PipelineManager.OpenedPipelineId
+import org.apache.spark._
 import org.apache.spark.shuffle.sort.PipelineShuffleHandle
 import org.apache.spark.storage.{BlockManager, PipelineManagerId}
 
 import scala.collection.mutable
 
-private[spark] class PipelineOutputManager[K,V](
-  maxPipelineSize: Long,
-  pipelineId: PipelineManagerId,
-  handle: PipelineShuffleHandle[K,V],
-  context: TaskContext,
-  blockManager: BlockManager) {
+private[spark] class PipelineManager[K,V](
+  val maxPipelineSize: Long,
+  val pipelineId: PipelineManagerId,
+  val handle: PipelineShuffleHandle[K,V],
+  val context: TaskContext,
+  val blockManager: BlockManager,
+  val pipelineMode: PipelineMode) {
   require(maxPipelineSize > 10 * 1024, s"spark.pipeline.buffer.max should larger than 10M, your value:${maxPipelineSize}")
   private var dep: Either[SplitDependency[K,V], ShuffleDependency[K,V,V]] = _
 
+  private val serializer = SparkEnv.get.serializer
+  private val subpipelineViewId: AtomicLong = new AtomicLong(0)
   private var outputSelector: OutputSelector[K, _] = _
   private var splits: Array[Int] = Array.empty
-  private var splitAliases: Array[AnyRef] = Array.empty
+  private var splitAliases: Array[Any] = Array.empty
 
   //subpipeline unqiue identifier to subpipeline
-  private var subPipelineMap: mutable.Map[Int,InMemorySubPipeline[K, V]] = mutable.HashMap.empty[Int, InMemorySubPipeline[K, V]]
+  private var subPipelineMap: mutable.Map[Int, SubPipeline[K, V]] = mutable.HashMap.empty[Int, SubPipeline[K, V]]
 
   private var subPipelineSize: mutable.Map[Int, Long] = mutable.HashMap.empty
+
   //alias to subpipeline unqiue identifier
-  private var splitAliasesMap: mutable.Map[AnyRef,Int] =  mutable.HashMap.empty[AnyRef, Int]
+  private var splitAliasesMap: mutable.Map[Any, Int] =  mutable.HashMap.empty[Any, Int]
+
+  // openedPipelineId to uniqueId
+  private[this] val openedPipelineReadViewMap: mutable.Map[OpenedPipelineId, Long] = mutable.HashMap.empty
+  // uniqueId to pipelineReadView
+  private[this] val unqiueId2PipelineReadView = new ConcurrentHashMap[Long, AbstractPipelineReaderView[K, V]]()
 
   @volatile private[this] var shouldStop: Boolean = false
   @volatile private[this] var stopped: Boolean = false
@@ -59,19 +72,33 @@ private[spark] class PipelineOutputManager[K,V](
     splitAliases.zipWithIndex.foreach{
       case (alias, index) =>
         splitAliasesMap += (alias -> splits(index))
-        val subPipeline = new InMemorySubPipeline[K,V](Some(partitioners(index)))
+        val subPipeline = pipelineMode match {
+          case _: MemoryPipelineMode =>
+            new InMemorySubPipeline[K,V](Some(partitioners(index)))
+          case _: SpillablePipelineMode =>
+            throw new UnsupportedOperationException
+        }
+
         subPipelineMap += (splits(index) -> subPipeline)
     }
 
-  }else if(handle.isShuffleDep){
+  } else if(handle.isShuffleDep){
     dep = Right(handle.dependency.asInstanceOf[ShuffleDependency[K,V,V]])
     splits = Array.fill[Int](1)(dep.right.get.shuffleId)
     outputSelector = new ShuffleIdSelector[K](Array.fill[Int](1)(dep.right.get.shuffleId))
-    splitAliases = Array.fill[AnyRef](1)(dep.right.get.shuffleId)
+    splitAliases = Array.fill[Any](1)(dep.right.get.shuffleId)
     splitAliasesMap += (splitAliases(0) -> splits(0))
 
     val partitioner = dep.right.get.partitioner
-    val subPipeline = new InMemorySubPipeline[K, V](Some(partitioner))
+
+    val subPipeline = pipelineMode match {
+      case _: MemoryPipelineMode =>
+        new InMemorySubPipeline[K,V](Some(partitioner))
+      case _: SpillablePipelineMode =>
+        //TODO: to support
+        throw new UnsupportedOperationException
+    }
+
     subPipelineMap += (splits(0) -> subPipeline)
   }
 
@@ -119,6 +146,51 @@ private[spark] class PipelineOutputManager[K,V](
       }
   }
 
+  /**
+    * open subpipeline and prepare to send data to downstream reducer.
+    *
+    * @param subPipelineIndex to locate which subpipeline managed by this manager should be open.
+    * @param reduceId
+    * @param startSyncId
+    * @return (uniqueReadViewId, startSyncId)
+    * */
+  def openSubPipeline(subPipelineIndex: Int, reduceId: Int, startSyncId: Long): (Long, Long) = this.synchronized{
+    val openedPipelineId = (subPipelineIndex, reduceId)
+
+    openedPipelineReadViewMap.get(openedPipelineId) match {
+      case Some(uniqueId) =>
+        (uniqueId, unqiueId2PipelineReadView.get(uniqueId).lastFetchId)
+      case None =>
+        val (subPipelineReaderView, id) = createSubPipelineView(subPipelineIndex, reduceId, startSyncId)
+        val uniqueId = subPipelineReaderView.pipelineReaderViewId.uniqueId
+        openedPipelineReadViewMap(openedPipelineId) = uniqueId
+        unqiueId2PipelineReadView.put(uniqueId, subPipelineReaderView)
+        (uniqueId, startSyncId)
+    }
+  }
+
+  def getSubPipelineReaderView(uniqueId: Long): AbstractPipelineReaderView[K, V] = {
+    unqiueId2PipelineReadView.get(uniqueId)
+  }
+
+  private[this] def createSubPipelineView(subPipelineIndex: Integer, reduceId: Integer, startSyncId: Long): (AbstractPipelineReaderView[K, V], Long) = {
+    val subPipeline = subPipelineMap(subPipelineIndex)
+    val subPipelineReaderView = subPipeline match {
+      case _: InMemorySubPipeline[K, V] =>
+        (new InMemoryPipelineReaderView[K, V](
+          new PipelineReaderViewId(subpipelineViewId.incrementAndGet()),
+          subPipeline,
+          reduceId,
+          startSyncId,
+          serializer), startSyncId)
+      case _ =>
+        throw new UnsupportedOperationException
+    }
+
+    subPipelineReaderView
+  }
+
+
   def stop = {
     shouldStop = true
   }
@@ -136,10 +208,13 @@ private[spark] class PipelineOutputManager[K,V](
   }
 }
 
-private[spark] object PipelineOutputManager{
+private[spark] object PipelineManager{
   //in bytes
   val SPARK_PIPELINE_BUFFER_MAX = "spark.pipeline.buffer.max"
   val DEFAULT_BUFFER_MAX = (Runtime.getRuntime.maxMemory() * 0.1).toLong
+
+  //(subpipelineIndex, reduceId, startSyncId)
+  type OpenedPipelineId = Tuple2[Int, Int]
 }
 
 private[this] class ShuffleIdSelector[K](

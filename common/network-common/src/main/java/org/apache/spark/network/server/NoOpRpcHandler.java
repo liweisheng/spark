@@ -25,9 +25,11 @@ import org.apache.spark.network.client.TransportClient;
 /** An RpcHandler suitable for a client-only TransportContext, which cannot receive RPCs. */
 public class NoOpRpcHandler extends RpcHandler {
   private final StreamManager streamManager;
+  private final ReadViewManager readViewManager;
 
   public NoOpRpcHandler() {
     streamManager = new OneForOneStreamManager();
+    readViewManager = new ReadViewManager();
   }
 
   @Override
@@ -37,4 +39,9 @@ public class NoOpRpcHandler extends RpcHandler {
 
   @Override
   public StreamManager getStreamManager() { return streamManager; }
+
+  @Override
+  public ReadViewManager getReadViewManager() {
+    return readViewManager;
+  }
 }

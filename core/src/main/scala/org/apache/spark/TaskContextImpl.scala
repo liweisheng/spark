@@ -156,7 +156,7 @@ private[spark] class TaskContextImpl(
     reasonIfKilled
   }
 
-  private[spark] override def getChildrenStageIds(): List[Int] = {
+  override def getChildrenStageIds(): List[Int] = {
     childrenStageIds
   }
 

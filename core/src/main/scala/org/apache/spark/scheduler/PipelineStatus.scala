@@ -19,23 +19,27 @@ package org.apache.spark.scheduler
 
 import java.io.{Externalizable, ObjectInput, ObjectOutput}
 
-import org.apache.spark.storage.BlockManagerId
+import org.apache.spark.storage.{BlockId, BlockManagerId, PipelineManagerId}
 
 private[spark] class PipelineStatus(
     private[this] var mapId: Int,
+    private[this] var pipelineOutputManagerId: PipelineManagerId,
     private[this] var loc: BlockManagerId)
   extends Externalizable {
 
   def location: BlockManagerId = loc
   def mapPartitionId: Int = mapId
+  def pipelineManagerId: PipelineManagerId = pipelineOutputManagerId
 
   override def readExternal(in: ObjectInput): Unit = {
     mapId = in.readInt()
-    BlockManagerId(in)
+    pipelineOutputManagerId = BlockId(in.readUTF()).asInstanceOf[PipelineManagerId]
+    loc = BlockManagerId(in)
   }
 
   override def writeExternal(out: ObjectOutput): Unit = {
     out.writeInt(mapId)
+    out.writeUTF(pipelineOutputManagerId.name)
     loc.writeExternal(out)
   }
 }

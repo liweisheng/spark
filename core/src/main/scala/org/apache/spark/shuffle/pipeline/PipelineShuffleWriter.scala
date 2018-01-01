@@ -31,7 +31,7 @@ private[spark] class PipelineShuffleWriter[K,V,C](
     taskId: Int,
     context: TaskContext)
   extends  Logging{
-  import PipelineOutputManager._
+  import PipelineManager._
 
   private val dep = handle.dependency
 
@@ -46,12 +46,12 @@ private[spark] class PipelineShuffleWriter[K,V,C](
   private val maxPipelineBufferSizeInBytes = conf.getOption(SPARK_PIPELINE_BUFFER_MAX).map(_.toLong)
     .getOrElse(DEFAULT_BUFFER_MAX)
 
-  private var pipelineOutputManager = new PipelineOutputManager(maxPipelineBufferSizeInBytes,
-    pipelineManagerId, handle, context, blockManager)
+  private var pipelineOutputManager = new PipelineManager(maxPipelineBufferSizeInBytes,
+    pipelineManagerId, handle, context, blockManager, MemoryPipelineMode())
 
 
   def writeAll(records: Iterator[PipelineEvent[Product2[K, V]]]): Unit ={
-    notifyPipelineStartup(new PipelineStatus(mapId, blockManager.blockManagerId))
+    notifyPipelineStartup(new PipelineStatus(mapId, pipelineManagerId, blockManager.blockManagerId))
     pipelineOutputManager.writeAll(records)
   }
 

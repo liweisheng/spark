@@ -19,9 +19,12 @@ package org.apache.spark.network.server;
 
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.google.common.base.Throwables;
 import io.netty.channel.Channel;
+import org.apache.spark.network.protocol.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,18 +32,7 @@ import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.buffer.NioManagedBuffer;
 import org.apache.spark.network.client.RpcResponseCallback;
 import org.apache.spark.network.client.TransportClient;
-import org.apache.spark.network.protocol.ChunkFetchRequest;
-import org.apache.spark.network.protocol.ChunkFetchFailure;
-import org.apache.spark.network.protocol.ChunkFetchSuccess;
-import org.apache.spark.network.protocol.Encodable;
-import org.apache.spark.network.protocol.OneWayMessage;
-import org.apache.spark.network.protocol.RequestMessage;
-import org.apache.spark.network.protocol.RpcFailure;
-import org.apache.spark.network.protocol.RpcRequest;
-import org.apache.spark.network.protocol.RpcResponse;
-import org.apache.spark.network.protocol.StreamFailure;
-import org.apache.spark.network.protocol.StreamRequest;
-import org.apache.spark.network.protocol.StreamResponse;
+
 import static org.apache.spark.network.util.NettyUtils.getRemoteAddress;
 
 /**
@@ -65,6 +57,8 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
   /** Returns each chunk part of a stream. */
   private final StreamManager streamManager;
 
+  private final ReadViewManager readViewManager;
+
   public TransportRequestHandler(
       Channel channel,
       TransportClient reverseClient,
@@ -73,6 +67,7 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
     this.reverseClient = reverseClient;
     this.rpcHandler = rpcHandler;
     this.streamManager = rpcHandler.getStreamManager();
+    this.readViewManager = rpcHandler.getReadViewManager();
   }
 
   @Override
@@ -107,8 +102,34 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
       processOneWayMessage((OneWayMessage) request);
     } else if (request instanceof StreamRequest) {
       processStreamRequest((StreamRequest) request);
-    } else {
+    } else if (request instanceof PipelineSegmentFetchRequest){
+      processPipelineSegmentFetchRequest((PipelineSegmentFetchRequest)request);
+    }else {
       throw new IllegalArgumentException("Unknown request type: " + request);
+    }
+  }
+
+  private void processPipelineSegmentFetchRequest(final PipelineSegmentFetchRequest req){
+    if (logger.isTraceEnabled()){
+      logger.trace("Received req from {} to fetch pipeline segment, pipelineManager {}, readViewId {}, fetchId{}",
+              getRemoteAddress(channel), req.pipelineManagerId, req.readViewId, req.fetchId);
+    }
+
+    try{
+      PipelineReadView readView = readViewManager.getView(req.readViewId, req.pipelineManagerId);
+      readView.fetchSegment(req.fetchId, new SendCallBack() {
+        @Override
+        public void send(ManagedBuffer buffer) {
+          respond(new PipelineSegmentFetchSuccess(req.pipelineManagerId, req.readViewId, req.fetchId, buffer));
+        }
+      });
+    } catch (Exception e) {
+      logger.error(String.format("Error fetch pipeline segment for request from %s, pipelineManager %s, readViewId %s," +
+              " fetchId %s"), getRemoteAddress(channel), req.pipelineManagerId, req.readViewId, req.fetchId);
+
+      respond(new PipelineSegmentFetchFailure(req.pipelineManagerId, req.readViewId, req.fetchId,
+              Throwables.getStackTraceAsString(e)));
+      return;
     }
   }
 
