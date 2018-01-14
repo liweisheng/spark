@@ -20,6 +20,7 @@ package org.apache.spark.shuffle.pipeline
 trait SubPipeline[K, V]{
   def stop()
   def isStopped(): Boolean
+  def hasMoreData(): Boolean
   def writeDataEvent(event : PipelineEvent[Product2[K,V]]): Long
 
   def writeNotifyEvent(event: PipelineEvent[Product2[K,V]]): Long

@@ -26,8 +26,12 @@ trait PipelineReadView {
     * @param sendCallback callback function used to send data
     * */
   def fetchSegment(fetchId: Long, sendCallback: SendCallBack)
+
+  def isEnd(): Boolean
 }
 
 trait SendCallBack {
   def send(buffer: ManagedBuffer)
+
+  def notifyPipelineEnd()
 }

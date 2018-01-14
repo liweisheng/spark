@@ -28,4 +28,9 @@ public interface PipelineSegmentReceiveCallback {
     void onSuccess(Long fetchId, ManagedBuffer buffer);
 
     void onFailure(Long fetchId, Throwable throwable);
+
+    /**
+     * Do special process when receive a pipeline end message
+     * */
+    void onPipelineEnd(Long fetchId);
 }

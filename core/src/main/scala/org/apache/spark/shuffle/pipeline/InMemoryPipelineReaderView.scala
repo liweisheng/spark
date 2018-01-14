@@ -39,6 +39,9 @@ class InMemoryPipelineReaderView[K, V](
     pipelineReaderViewId, subPipeline, reduceId, startSyncId)
   with Logging{
 
+  @volatile
+  private[this] var receiveBlockEnd = false;
+
   val DEFAULT_CHUNK_SIZE = 1024 * 1024
   val ON_HEAP_ALLOCATOR = ByteBuffer.allocate _
 
@@ -62,13 +65,19 @@ class InMemoryPipelineReaderView[K, V](
       }
     } else if(fetchId == lastFetchId + 1){
       val dataAndSize = inMemorySubPipeline.fetchPartitionData(reduceId)
-      Future {
-        serializeAndSend(dataAndSize, sendCallback)
+
+      if(dataAndSize._1 == null && !inMemorySubPipeline.hasMoreData()){
+        sendCallback.notifyPipelineEnd()
+      }else{
+        Future {
+          serializeAndSend(dataAndSize, sendCallback)
+        }
       }
     } else if(fetchId < lastFetchId){
       logWarning(s"fetchId:${fetchId} is less than lastFetchId:${lastFetchId}, omit this fetch." +
         s" reduceId:${reduceId}, pipelineReaderViewId:${pipelineReaderViewId}")
     } else if(fetchId > lastFetchId + 1){
+      logWarning(s"Receive unordered fetchId:$fetchId, lastFetchId:${lastFetchId}, add into waitingFetchIds")
       waitingFetchIds += fetchId
     }
   }
@@ -86,4 +95,6 @@ class InMemoryPipelineReaderView[K, V](
 
     sendCallback.send(new NettyManagedBuffer(nettyBuf))
   }
+
+  override def isEnd(): Boolean = receiveBlockEnd
 }

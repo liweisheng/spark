@@ -33,6 +33,10 @@ private[spark] class PipelineEvent[DATATYPE](
     eventType == DATA
   }
 
+  def isBlockEnd: Boolean = {
+    eventType == BLOCKEND
+  }
+
   def isCheckpoint: Boolean = {
     eventType == CHECKPOINT
   }

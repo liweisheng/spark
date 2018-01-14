@@ -122,6 +122,11 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
         public void send(ManagedBuffer buffer) {
           respond(new PipelineSegmentFetchSuccess(req.pipelineManagerId, req.readViewId, req.fetchId, buffer));
         }
+
+        @Override
+        public void notifyPipelineEnd() {
+          respond(new PipelineEnd(req.pipelineManagerId, req.readViewId, req.fetchId));
+        }
       });
     } catch (Exception e) {
       logger.error(String.format("Error fetch pipeline segment for request from %s, pipelineManager %s, readViewId %s," +

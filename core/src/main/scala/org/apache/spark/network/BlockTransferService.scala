@@ -18,15 +18,15 @@
 package org.apache.spark.network
 
 import java.io.Closeable
+import java.lang.Long
 import java.nio.ByteBuffer
 
 import scala.concurrent.{Future, Promise}
 import scala.concurrent.duration.Duration
 import scala.reflect.ClassTag
-
 import org.apache.spark.internal.Logging
 import org.apache.spark.network.buffer.{ManagedBuffer, NioManagedBuffer}
-import org.apache.spark.network.shuffle.{BlockFetchingListener, ShuffleClient}
+import org.apache.spark.network.shuffle.{BlockFetchingListener, PipelineSegmentFetchingListener, ShuffleClient}
 import org.apache.spark.storage.{BlockId, StorageLevel}
 import org.apache.spark.util.ThreadUtils
 
@@ -55,7 +55,16 @@ abstract class BlockTransferService extends ShuffleClient with Closeable with Lo
   def hostName: String
 
 
-
+  override def fetchPipelineSegment(
+       host: String,
+       port: Int,
+       pipelineManagerId: String,
+       subPipelineIndex: Integer,
+       reduceId: Integer,
+       startFetchId: Long,
+       listener: PipelineSegmentFetchingListener): Unit = {
+    throw new UnsupportedOperationException("fetchPipelineSegment is not supported here")
+  }
 
   /**
    * Fetch a sequence of blocks from a remote node asynchronously,

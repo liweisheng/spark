@@ -22,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap
 import org.apache.spark._
 import org.apache.spark.internal.Logging
 import org.apache.spark.shuffle._
+import org.apache.spark.shuffle.pipeline.PipelineShuffleWriter
 
 /**
  * In sort-based shuffle, incoming records are sorted according to their target partition ids, then
@@ -117,8 +118,15 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       startPartition: Int,
       endPartition: Int,
       context: TaskContext): ShuffleReader[K, C] = {
-    new BlockStoreShuffleReader(
-      handle.asInstanceOf[BaseShuffleHandle[K, _, C]], startPartition, endPartition, context)
+    handle match {
+      case pipelineShuffleHandle: PipelineShuffleHandle[K @unchecked, C @unchecked] =>
+        //TODO: return pipelineReader
+        null
+      case _  =>
+        new BlockStoreShuffleReader(
+    handle.asInstanceOf[BaseShuffleHandle[K, _, C]], startPartition, endPartition, context)
+    }
+
   }
 
   /** Get a writer for a given partition. Called on executors by map tasks. */
@@ -148,7 +156,8 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
           context,
           env.conf)
       case pipelineShuffleHandle: PipelineShuffleHandle[K @unchecked, V @unchecked] =>
-        throw new UnsupportedOperationException
+        new PipelineShuffleWriter[K, V](
+          pipelineShuffleHandle, mapId, context)
       case other: BaseShuffleHandle[K @unchecked, V @unchecked, _] =>
         new SortShuffleWriter(shuffleBlockResolver, other, mapId, context)
     }
@@ -214,7 +223,7 @@ private[spark] object SortShuffleManager extends Logging {
   * Subclass of [[BaseShuffleHandle]], used to identify when we've chosen to use the
   * pipeline shuffle.
   */
-private[spark] class PipelineShuffleHandle[K,V](
+private[spark] class PipelineShuffleHandle[K, V](
   shuffleId: Int,
   numMaps: Int,
   dependency: ShuffleDependency[K,V,V])

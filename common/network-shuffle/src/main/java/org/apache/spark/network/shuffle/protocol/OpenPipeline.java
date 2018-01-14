@@ -39,7 +39,7 @@ public class OpenPipeline extends BlockTransferMessage {
     }
 
     @Override
-    protected Type type() {
+    protected BlockTransferMessage.Type type() {
         return Type.OPEN_PIPELINE;
     }
 

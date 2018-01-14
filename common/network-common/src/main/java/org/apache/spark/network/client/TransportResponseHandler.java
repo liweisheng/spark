@@ -182,6 +182,17 @@ public class TransportResponseHandler extends MessageHandler<ResponseMessage> {
           "Failure while fetching " + pipelineSegmentId.pipelineManagerId + ": " + pipelineSegmentId.readViewId
                 + ": " + pipelineSegmentId.fetchId + ": " + resp.errorString));
       }
+    } else if(message instanceof  PipelineEnd){
+      PipelineEnd resp = (PipelineEnd)message;
+      PipelineSegmentId pipelineSegmentId = new PipelineSegmentId(
+              resp.pipelineManagerId, resp.readViewId, resp.fetchId);
+      PipelineSegmentReceiveCallback callback = outstandingPipelineSegmentFetchs.get(pipelineSegmentId);
+      if(callback == null) {
+        logger.warn("Ignoring response for pipeline fetch {} from {} since it is not outstanding",
+                pipelineSegmentId.toString(), getRemoteAddress(channel));
+      } else{
+        callback.onPipelineEnd(pipelineSegmentId.fetchId);
+      }
     } else if (message instanceof ChunkFetchSuccess) {
       ChunkFetchSuccess resp = (ChunkFetchSuccess) message;
       ChunkReceivedCallback listener = outstandingFetches.get(resp.streamChunkId);

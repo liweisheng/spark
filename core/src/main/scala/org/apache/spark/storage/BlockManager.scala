@@ -1478,10 +1478,12 @@ private[spark] class BlockManager(
 
   def getPipelineManager(pipelineManagerId: PipelineManagerId): PipelineManager[_, _] = {
     var m: PipelineManager[_,_] = null
-    while((m = pipelineOutputManagerMap.get(pipelineManagerId)) == null){
+    m = pipelineOutputManagerMap.get(pipelineManagerId)
+    while(m == null){
       lock.synchronized{
         lock.wait()
       }
+      m = pipelineOutputManagerMap.get(pipelineManagerId)
     }
     m
   }

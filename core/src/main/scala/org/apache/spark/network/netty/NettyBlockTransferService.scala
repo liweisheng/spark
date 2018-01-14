@@ -29,7 +29,7 @@ import org.apache.spark.network.buffer.ManagedBuffer
 import org.apache.spark.network.client.{RpcResponseCallback, TransportClientBootstrap, TransportClientFactory}
 import org.apache.spark.network.crypto.{AuthClientBootstrap, AuthServerBootstrap}
 import org.apache.spark.network.server._
-import org.apache.spark.network.shuffle.{BlockFetchingListener, OneForOneBlockFetcher, PipelineSegmentFetchingListener, RetryingBlockFetcher}
+import org.apache.spark.network.shuffle._
 import org.apache.spark.network.shuffle.protocol.UploadBlock
 import org.apache.spark.network.util.JavaUtils
 import org.apache.spark.serializer.JavaSerializer
@@ -111,6 +111,30 @@ private[spark] class NettyBlockTransferService(
         logError("Exception while beginning fetchBlocks", e)
         blockIds.foreach(listener.onBlockFetchFailure(_, e))
     }
+  }
+
+  override def fetchPipelineSegment(
+      host: String,
+      port: Int,
+      pipelineManagerId: String,
+      subPipelineIndex: Integer,
+      reduceId: Integer,
+      startFetchId: Long,
+      listener: PipelineSegmentFetchingListener
+      ): Unit = {
+    logTrace(s"Fetch pipeline segment from $host:$port, pipelineManagerId:$pipelineManagerId, " +
+      s"subPipelineIndex: ${subPipelineIndex}, reduceId:$reduceId")
+    val pipelineFetcher = new RetryablePipelineSegmentFetcher(
+      clientFactory,
+      transportConf,
+      host,
+      port,
+      pipelineManagerId,
+      subPipelineIndex,
+      reduceId,
+      listener,
+      startFetchId)
+    pipelineFetcher.start()
   }
 
   override def port: Int = server.getPort

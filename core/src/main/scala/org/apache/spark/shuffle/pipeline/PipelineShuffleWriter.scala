@@ -25,12 +25,11 @@ import org.apache.spark.shuffle.ShuffleWriter
 import org.apache.spark.shuffle.sort.PipelineShuffleHandle
 import org.apache.spark.storage.PipelineManagerId
 
-private[spark] class PipelineShuffleWriter[K,V,C](
-    handle: PipelineShuffleHandle[K,V],
+private[spark] class PipelineShuffleWriter[K, V](
+    handle: PipelineShuffleHandle[K, V],
     mapId: Int,
-    taskId: Int,
     context: TaskContext)
-  extends  Logging{
+  extends ShuffleWriter[K, V] with Logging{
   import PipelineManager._
 
   private val dep = handle.dependency
@@ -61,7 +60,7 @@ private[spark] class PipelineShuffleWriter[K,V,C](
   def notifyPipelineStartup(pipelineStatus : PipelineStatus) = {
     val ser = SparkEnv.get.serializer.newInstance()
     val serBytes = ser.serialize(pipelineStatus)
-    CoarseGrainedExecutorBackend.get.statusUpdate(taskId, TaskState.PIPELINE, serBytes)
+    CoarseGrainedExecutorBackend.get.statusUpdate(context.taskAttemptId(), TaskState.PIPELINE, serBytes)
   }
 
   def stop(): Unit = {
@@ -77,4 +76,9 @@ private[spark] class PipelineShuffleWriter[K,V,C](
     }
   }
 
+  /** Write a sequence of records to this task's output */
+  override def write(records: Iterator[Product2[K, V]]): Unit = ???
+
+  /** Close this writer, passing along whether the map completed */
+  override def stop(success: Boolean): Option[MapStatus] = ???
 }

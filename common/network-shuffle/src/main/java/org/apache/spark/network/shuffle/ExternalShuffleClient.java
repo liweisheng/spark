@@ -134,6 +134,18 @@ public class ExternalShuffleClient extends ShuffleClient {
   }
 
   @Override
+  public void fetchPipelineSegment(
+      String host,
+      int port,
+      String pipelineManagerId,
+      Integer subPipelineIndex,
+      Integer reduceId,
+      Long startFetchId,
+      PipelineSegmentFetchingListener listener) {
+    throw new UnsupportedOperationException("fetchPipelineSegment is not supported");
+  }
+
+  @Override
   public void close() {
     clientFactory.close();
   }

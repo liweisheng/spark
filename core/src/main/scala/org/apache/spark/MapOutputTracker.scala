@@ -30,7 +30,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcCallContext, RpcEndpoint, RpcEndpointRef, RpcEnv}
 import org.apache.spark.scheduler.{MapStatus, PipelineStatus}
 import org.apache.spark.shuffle.MetadataFetchFailedException
-import org.apache.spark.storage.{BlockId, BlockManagerId, ShuffleBlockId}
+import org.apache.spark.storage.{BlockId, BlockManagerId, PipelineManagerId, ShuffleBlockId}
 import org.apache.spark.util._
 
 import scala.collection.mutable
@@ -163,6 +163,13 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
     }
   }
 
+  def getPipelineOutputByExecutorId(shuffleId: Int, reduceId: Int): Seq[(BlockManagerId, Seq[PipelineManagerId])] = {
+    val statuses = getPipelineStatus(shuffleId)
+    statuses.synchronized {
+      return MapOutputTracker.convertPipelineStatuses(shuffleId, reduceId, statuses)
+    }
+
+  }
   /**
    * Return statistics about all of the outputs for a given shuffle.
    */
@@ -841,6 +848,25 @@ private[spark] object MapOutputTracker extends Logging {
           splitsByAddress.getOrElseUpdate(status.location, ArrayBuffer()) +=
             ((ShuffleBlockId(shuffleId, mapId, part), status.getSizeForBlock(part)))
         }
+      }
+    }
+
+    splitsByAddress.toSeq
+  }
+
+  private def convertPipelineStatuses(
+      shuffleId: Int,
+      reduceId: Int,
+      statuses: Array[PipelineStatus]): Seq[(BlockManagerId, Seq[PipelineManagerId])] = {
+    assert(statuses != null)
+    val splitsByAddress = new mutable.HashMap[BlockManagerId, ArrayBuffer[PipelineManagerId]]
+
+    for((status, mapId) <- statuses.zipWithIndex) {
+      if(status == null){
+        //do not throw exception
+        logWarning(s"Missing an output location for shuffle $shuffleId, mapId:$mapId")
+      }else{
+        splitsByAddress.getOrElseUpdate(status.location, ArrayBuffer()) += status.pipelineManagerId
       }
     }
 

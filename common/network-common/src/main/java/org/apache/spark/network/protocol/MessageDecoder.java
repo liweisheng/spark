@@ -89,6 +89,9 @@ public final class MessageDecoder extends MessageToMessageDecoder<ByteBuf> {
       case PipelineSegmentFetchFailure:
         return PipelineSegmentFetchFailure.decode(in);
 
+      case PipelineEnd:
+        return PipelineEnd.decode(in);
+
       default:
         throw new IllegalArgumentException("Unexpected message type: " + msgType);
     }

@@ -41,4 +41,14 @@ public abstract class ShuffleClient implements Closeable {
       String execId,
       String[] blockIds,
       BlockFetchingListener listener);
+
+  public abstract void fetchPipelineSegment(
+      String host,
+      int port,
+      String pipelineManagerId,
+      Integer subPipelineIndex,
+      Integer reduceId,
+      Long startFetchId,
+      PipelineSegmentFetchingListener listener
+      );
 }

@@ -71,7 +71,7 @@ public class PipelineReadViewCreate extends BlockTransferMessage{
     }
 
     @Override
-    protected Type type() {
+    protected BlockTransferMessage.Type type() {
         return Type.PIPELINE_READ_VIEW_CREATE;
     }
 

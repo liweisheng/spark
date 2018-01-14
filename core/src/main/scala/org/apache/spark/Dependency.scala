@@ -110,7 +110,6 @@ class SplitDependency[K: ClassTag, V: ClassTag](
   }
   if(splitsAliases.isEmpty){splitsAliases = splits.asInstanceOf[Array[Any]]}
 
-  require(splitIndex < partitioners.length, s"split index ${splitIndex} is bigger than ${partitioners.length}")
   require(splits.length == partitioners.length,
     s"splits length:${splits.length} is not equal with partitioner length:${partitioners.length}")
 

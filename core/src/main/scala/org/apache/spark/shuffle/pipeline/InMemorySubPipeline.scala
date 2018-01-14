@@ -25,6 +25,11 @@ import scala.collection.mutable.ArrayBuffer
 private[spark] class InMemorySubPipeline[K,V](
     val partitioner: Option[Partitioner])
   extends SubPipeline[K, V]{
+
+  @volatile
+  private[this] var receiveBlockEndEvent = false
+
+  @volatile
   private var isStop: Boolean = false
 
   private val numPartition = partitioner.map(_.numPartitions).getOrElse(1)
@@ -46,6 +51,9 @@ private[spark] class InMemorySubPipeline[K,V](
   }
 
   def writeDataEvent(event : PipelineEvent[Product2[K,V]]): Long = {
+    if(event.isBlockEnd){
+
+    }
     val key = event.data._1
     val targetPartition = getPartition(key)
     val size = subPartitions(targetPartition).writeEvent(event)
@@ -61,6 +69,14 @@ private[spark] class InMemorySubPipeline[K,V](
     }
 
     totalSize
+  }
+
+  def hasMoreData(): Boolean = {
+    !receiveBlockEndEvent
+  }
+
+  private[this] def processBlockEnd() = {
+    receiveBlockEndEvent = true
   }
 
   /**

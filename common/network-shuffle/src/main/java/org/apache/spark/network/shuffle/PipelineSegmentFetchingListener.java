@@ -34,4 +34,9 @@ public interface PipelineSegmentFetchingListener extends EventListener {
      * Called at least one when fetching with fetchId is failed.
      * */
     void onPipelineSegmentFetchFailure(String pipelineManagedId, Long fetchId, Throwable t);
+
+    /**
+     * Called after receive pipeline end message
+     * */
+    void onPipelineEnd(String pipelineManagerId, Long fetchId);
 }

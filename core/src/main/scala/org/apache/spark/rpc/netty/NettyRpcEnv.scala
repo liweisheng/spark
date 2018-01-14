@@ -709,4 +709,6 @@ private[netty] class NettyRpcHandler(
       // See java.net.Socket.getRemoteSocketAddress
     }
   }
+
+  override def getReadViewManager: ReadViewManager = null
 }

@@ -20,18 +20,19 @@ package org.apache.spark.network.protocol;
 import com.google.common.base.Objects;
 import io.netty.buffer.ByteBuf;
 
+
 /**
- * Request to fetch a segment of a pipeline. This will correspond to a single
- * {@link ResponseMessage} (either success or failure)
+ * Send pipeline end when no data left in this pipeline.
+ * This is only used in bounded data.
  *
  * @author liweisheng
- * */
-final public class PipelineSegmentFetchRequest extends AbstractMessage implements RequestMessage{
+ */
+public class PipelineEnd extends AbstractMessage implements ResponseMessage{
     public final String pipelineManagerId;
     public final Long readViewId;
     public final Long fetchId;
 
-    public PipelineSegmentFetchRequest(String pipelineManagerId, Long readViewId, Long fetchId) {
+    public PipelineEnd(String pipelineManagerId, Long readViewId, Long fetchId){
         this.pipelineManagerId = pipelineManagerId;
         this.readViewId = readViewId;
         this.fetchId = fetchId;
@@ -39,7 +40,7 @@ final public class PipelineSegmentFetchRequest extends AbstractMessage implement
 
     @Override
     public Type type() {
-        return Type.PipelineSegmentFetchRequest;
+        return Type.PipelineEnd;
     }
 
     @Override
@@ -54,14 +55,6 @@ final public class PipelineSegmentFetchRequest extends AbstractMessage implement
         buf.writeLong(fetchId);
     }
 
-    public static PipelineSegmentFetchRequest decode(ByteBuf buf){
-        String pipelineManagerId = Encoders.Strings.decode(buf);
-        Long readViewId = buf.readLong();
-        Long fetchId = buf.readLong();
-
-        return new PipelineSegmentFetchRequest(pipelineManagerId, readViewId, fetchId);
-    }
-
     @Override
     public int hashCode() {
         return Objects.hashCode(pipelineManagerId, readViewId, fetchId);
@@ -69,13 +62,13 @@ final public class PipelineSegmentFetchRequest extends AbstractMessage implement
 
     @Override
     public boolean equals(Object obj) {
-        if(obj == null || !(obj instanceof PipelineSegmentFetchRequest)){
+        if(obj == null || !(obj instanceof PipelineEnd)){
             return false;
         }
 
-        PipelineSegmentFetchRequest other = (PipelineSegmentFetchRequest)obj;
+        PipelineEnd other = (PipelineEnd)obj;
 
-        return  Objects.equal(pipelineManagerId, other.pipelineManagerId)
+        return Objects.equal(pipelineManagerId, other.pipelineManagerId)
                 && Objects.equal(readViewId, other.readViewId)
                 && Objects.equal(fetchId, other.fetchId);
     }
@@ -87,5 +80,12 @@ final public class PipelineSegmentFetchRequest extends AbstractMessage implement
                 .add("readViewId", readViewId)
                 .add("fetchId", fetchId)
                 .toString();
+    }
+
+    public static PipelineEnd decode(ByteBuf buf){
+        String pipelineManagerId = Encoders.Strings.decode(buf);
+        Long readViewId = buf.readLong();
+        Long fetchId = buf.readLong();
+        return new PipelineEnd(pipelineManagerId, readViewId, fetchId);
     }
 }

@@ -106,6 +106,13 @@ public class RetryablePipelineSegmentFetcher {
                     fetchId, pipelineManagerId, subPipelineIndex, reduceId);
             RetryablePipelineSegmentFetcher.this.processFailure(fetchId, throwable);
         }
+
+        @Override
+        public void onPipelineEnd(Long fetchId) {
+            LOG.debug("Receive pipelineEnd, fetchId:{}, pipelineManagerId:{}, subPipelineIndex:{}, reduceID:{}",
+                    fetchId, pipelineManagerId, subPipelineIndex, reduceId);
+            RetryablePipelineSegmentFetcher.this.processPipelineEnd(fetchId);
+        }
     }
 
     synchronized private void processSuccess(Long fetchId, ManagedBuffer buffer){
@@ -130,6 +137,10 @@ public class RetryablePipelineSegmentFetcher {
         }else{
             listener.onPipelineSegmentFetchFailure(pipelineManagerId, fetchId, throwable);
         }
+    }
+
+    synchronized private void processPipelineEnd(Long fetchId){
+        listener.onPipelineEnd(pipelineManagerId, fetchId);
     }
 
     synchronized private boolean shouldRetry(Throwable e) {
