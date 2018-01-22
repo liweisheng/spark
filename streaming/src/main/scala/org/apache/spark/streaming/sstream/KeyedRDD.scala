@@ -30,29 +30,14 @@ private[spark] class KeyedRDDPartition(val idx: Int) extends Partition{
 
 private[spark] class KeyedRDD[K: ClassTag, V: ClassTag](
     @transient var prev: RDD[PipelineEvent[_ <: Product2[K, V]]],
-    part: Partitioner)
+    part: Partitioner,
+    dep: SplitDependency[K, V])
   extends RDD[PipelineEvent[(K, V)]](prev.context, Nil){
 
   private var userSpecifiedSerializer: Option[Serializer] = None
 
-  def setSerializer(serializer: Serializer): KeyedRDD[K, V] = {
-    this.userSpecifiedSerializer = Option(serializer)
-    this
-  }
-
   override protected def getDependencies: Seq[Dependency[_]] = {
-    val serializer = userSpecifiedSerializer.getOrElse {
-      val serializerManager = SparkEnv.get.serializerManager
-      serializerManager.getSerializer(implicitly[ClassTag[K]], implicitly[ClassTag[V]])
-    }
-
-    val splits = Array[Int](0)
-    val splitAliases = Array[Any](0)
-    val outputSelector = new OutputSelector[K, Int] {
-      override def select(key: K): Array[Int] = Array(0)
-    }
-
-    List(new SplitDependency(prev, Array(part), serializer, splits, splitAliases, 0, outputSelector))
+    List(dep)
   }
 
   override def compute(split: Partition, context: TaskContext): Iterator[PipelineEvent[(K, V)]] = {

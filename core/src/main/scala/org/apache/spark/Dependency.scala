@@ -102,7 +102,8 @@ class SplitDependency[K: ClassTag, V: ClassTag](
     var splits: Array[Int] = Array.empty,
     var splitsAliases: Array[Any] = Array.empty,
     val splitIndex: Int,
-    val outputSelector: OutputSelector[K, _])
+    val outputSelector: OutputSelector[K, _],
+    override val shuffleId: Int)
   extends ShuffleDependency[K,V,V](null, null, serializer, null, null, false, true)
   {
 
@@ -114,8 +115,7 @@ class SplitDependency[K: ClassTag, V: ClassTag](
   require(splits.length == partitioners.length,
     s"splits length:${splits.length} is not equal with partitioner length:${partitioners.length}")
 
-  override def rdd: RDD[_] =
-    _rdd
+  override def rdd: RDD[_] = _rdd
 
   override val shuffleHandle: ShuffleHandle = rdd.context.env.shuffleManager.registerShuffle(
     shuffleId, _rdd.partitions.length, this)
