@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap
 import org.apache.spark._
 import org.apache.spark.internal.Logging
 import org.apache.spark.shuffle._
-import org.apache.spark.shuffle.pipeline.PipelineShuffleWriter
+import org.apache.spark.shuffle.pipeline.{PipelineShuffleReader, PipelineShuffleWriter}
 
 /**
  * In sort-based shuffle, incoming records are sorted according to their target partition ids, then
@@ -120,8 +120,8 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       context: TaskContext): ShuffleReader[K, C] = {
     handle match {
       case pipelineShuffleHandle: PipelineShuffleHandle[K @unchecked, C @unchecked] =>
-        //TODO: return pipelineReader
-        null
+        new PipelineShuffleReader[K, C](handle.asInstanceOf[PipelineShuffleHandle[K, C]],
+          startPartition, context)
       case _  =>
         new BlockStoreShuffleReader(
     handle.asInstanceOf[BaseShuffleHandle[K, _, C]], startPartition, endPartition, context)

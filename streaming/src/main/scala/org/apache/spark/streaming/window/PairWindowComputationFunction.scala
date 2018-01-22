@@ -22,7 +22,7 @@ import scala.reflect.ClassTag
 
 
 class PairWindowComputationFunction[K: ClassTag, V: ClassTag](
-   self: WindowComputation[(K, V)]) {
+   self: WindowComputation[(K, V)]) extends Serializable{
   def combineByKey[C: ClassTag](
     initializer: V => C,
     combiner: (C, V) => C): Aggregator[K, V, C] ={

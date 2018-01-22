@@ -23,7 +23,7 @@ import scala.reflect.ClassTag
 class Aggregator[K: ClassTag, V: ClassTag, C: ClassTag](
    val initializer: V => C,
    val combiner: (C, V) => C,
-   val ord: Ordering[K] = null){
+   val ord: Ordering[K] = null) extends Serializable{
   private[this] val internalMap = scala.collection.mutable.HashMap.empty[K, C]
 
   def insertAll(records: Iterator[(K, V)]): Iterator[(K, C)] = {

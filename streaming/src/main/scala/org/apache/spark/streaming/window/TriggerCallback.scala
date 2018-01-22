@@ -15,18 +15,11 @@
  * limitations under the License.
  */
 
-package org.apache.spark.streaming.sstream
+package org.apache.spark.streaming.window
 
-/**
- * @tparam T type of event
- * */
-trait SourceFunction[T] extends Serializable {
-  def run(collector: OutputCollector[T])
-}
+import scala.reflect.ClassTag
 
 
-trait OutputCollector[T] extends Serializable {
-  def collect(data: T)
-
-  def close()
+abstract class TriggerCallback[T: ClassTag] {
+  def call(windowIdentifier: WindowIdentifier, computedData: Iterator[T])
 }

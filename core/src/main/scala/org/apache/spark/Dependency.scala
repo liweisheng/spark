@@ -18,11 +18,11 @@
 package org.apache.spark
 
 import scala.reflect.ClassTag
-
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.shuffle.ShuffleHandle
+import org.apache.spark.shuffle.pipeline.PipelineEvent
 
 /**
  * :: DeveloperApi ::
@@ -30,7 +30,7 @@ import org.apache.spark.shuffle.ShuffleHandle
  */
 @DeveloperApi
 abstract class Dependency[T] extends Serializable {
-  def rdd: RDD[T]
+  def rdd: RDD[_]
 }
 
 
@@ -77,7 +77,7 @@ class ShuffleDependency[K: ClassTag, V: ClassTag, C: ClassTag](
     val pipeline: Boolean = false)
   extends Dependency[Product2[K, V]] {
 
-  override def rdd: RDD[Product2[K, V]] = _rdd.asInstanceOf[RDD[Product2[K, V]]]
+  override def rdd: RDD[_] = _rdd
 
   private[spark] val keyClassName: String = reflect.classTag[K].runtimeClass.getName
   private[spark] val valueClassName: String = reflect.classTag[V].runtimeClass.getName
@@ -96,14 +96,15 @@ class ShuffleDependency[K: ClassTag, V: ClassTag, C: ClassTag](
 
 @DeveloperApi
 class SplitDependency[K: ClassTag, V: ClassTag](
-    @transient private val _rdd: RDD[_ <: Product2[K, V]],
+    @transient private val _rdd: RDD[PipelineEvent[_ <: Product2[K, V]]],
     val partitioners: Array[Partitioner],
     override val serializer: Serializer = SparkEnv.get.serializer,
     var splits: Array[Int] = Array.empty,
     var splitsAliases: Array[Any] = Array.empty,
     val splitIndex: Int,
     val outputSelector: OutputSelector[K, _])
-  extends ShuffleDependency[K,V,V](null, null, serializer, null, null, false, true) {
+  extends ShuffleDependency[K,V,V](null, null, serializer, null, null, false, true)
+  {
 
   if(splits.isEmpty){
     splits = (0 until partitioners.length).toArray
@@ -113,7 +114,8 @@ class SplitDependency[K: ClassTag, V: ClassTag](
   require(splits.length == partitioners.length,
     s"splits length:${splits.length} is not equal with partitioner length:${partitioners.length}")
 
-  override def rdd: RDD[Product2[K, V]] = _rdd.asInstanceOf[RDD[Product2[K, V]]]
+  override def rdd: RDD[_] =
+    _rdd
 
   override val shuffleHandle: ShuffleHandle = rdd.context.env.shuffleManager.registerShuffle(
     shuffleId, _rdd.partitions.length, this)

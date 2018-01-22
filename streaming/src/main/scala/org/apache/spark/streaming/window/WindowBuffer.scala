@@ -36,7 +36,7 @@ class Lattice[T](
   }
 }
 
-abstract class WindowBuffer[T] {
+abstract class WindowBuffer[T] extends Serializable{
   def triggerNext(upperEventTime: Long): Seq[(WindowIdentifier, Iterable[T])]
 
   def insert(data: T, timestamp: Long): Seq[(WindowIdentifier, Iterable[T])]

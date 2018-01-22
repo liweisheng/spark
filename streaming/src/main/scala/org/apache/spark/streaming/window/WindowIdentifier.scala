@@ -18,16 +18,17 @@
 package org.apache.spark.streaming.window
 
 import scala.concurrent.duration.Duration
-sealed class WindowIdentifier
+sealed class WindowIdentifier(
+  val startTimestamp: Long)
 
 case class TimeWindowIdentifier(
-  val startTimestamp: Long,
-  val duration: Duration) extends WindowIdentifier
+  override val startTimestamp: Long,
+  val duration: Duration) extends WindowIdentifier(startTimestamp)
 
 case class SessionWindowIdentifer(
-  val startTimestamp: Long,
+  override val startTimestamp: Long,
   var endTimestamp: Long,
-  val sessionTimeout: Duration) extends WindowIdentifier
+  val sessionTimeout: Duration) extends WindowIdentifier(startTimestamp)
 
 
 

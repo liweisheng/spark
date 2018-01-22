@@ -19,6 +19,7 @@ package org.apache.spark.streaming.sstream
 
 import org.apache.spark.SparkContext
 import org.apache.spark.internal.Logging
+import org.apache.spark.shuffle.pipeline.PipelineEvent
 
 import scala.reflect.ClassTag
 
@@ -27,8 +28,15 @@ class SStreamContext private[streaming] (
   ) extends Logging{
 
   def source[T: ClassTag](
-     sourceFunction: SourceFunction[T],
-     eventTimeExtractor: EventTimeExtractor[T]): Unit = {
+     sourceFunctions: Array[SourceFunction[T]],
+     eventTimeExtractor: EventTimeExtractor[T]): SRDD[T] = {
+    val sourceRDD = new SourceRDD[T](_sc, sourceFunctions)
+    val sourceEventRDD = sourceRDD.map(
+      event => {
+        val eventTime = eventTimeExtractor.extractEventTime(event)
+        PipelineEvent.dataEvent[T](event, eventTime)
+      })
 
+    new SRDD[T](sourceEventRDD)
   }
 }

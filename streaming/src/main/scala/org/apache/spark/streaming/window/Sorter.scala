@@ -20,8 +20,8 @@ package org.apache.spark.streaming.window
 import scala.reflect.ClassTag
 
 class Sorter[K: ClassTag, V: ClassTag](
-   val ascending: Boolean)
-                                      (implicit var ord: Ordering[K]){
+   val ascending: Boolean) (implicit var ord: Ordering[K])
+  extends Serializable{
 
   ord = if(ascending) ord.reverse else ord
   implicit val ordering: Ordering[(K, V)] = Ordering.by(_._1)

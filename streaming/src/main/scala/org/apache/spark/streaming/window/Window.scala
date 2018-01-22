@@ -29,7 +29,7 @@ abstract class Window[IN: ClassTag, OUT: ClassTag] extends Serializable{
   private[this] var triggerPolicy: TriggerPolicy = _
   private[this] var computation: WindowComputation[OUT] = _
 
-  private[this] var triggerCallback: (WindowIdentifier, Iterator[OUT]) => Unit = _
+  private[this] var triggerCallback: TriggerCallback[OUT] = _
 
   def computeWindow(datasInWindow: Iterable[IN]): Iterator[OUT] = {
     val windowComputationInstance = WindowComputationInstance.newComputationInstance[IN](computation,
@@ -46,7 +46,7 @@ abstract class Window[IN: ClassTag, OUT: ClassTag] extends Serializable{
   def processWatermark[W: ClassTag](watermark: W)
   def processCheckpoint[C: ClassTag](checkpoint: C)
 
-  def start(triggerCallback: (WindowIdentifier, Iterator[OUT]) => Unit) = {
+  def start(triggerCallback: TriggerCallback[OUT]) = {
     this.triggerCallback = triggerCallback
   }
 
@@ -58,7 +58,7 @@ abstract class Window[IN: ClassTag, OUT: ClassTag] extends Serializable{
   }
 
   protected def onTrigger(windowIdentifier: WindowIdentifier, computedData: Iterator[OUT]) = {
-    triggerCallback(windowIdentifier, computedData)
+    triggerCallback.call(windowIdentifier, computedData)
   }
 
   protected def newComputationInstance(datasInWindow: Iterator[IN]): WindowComputationInstance[OUT] = {
@@ -110,7 +110,7 @@ class SlideWindow[IN: ClassTag, OUT: ClassTag](
 
   }
 
-  override def start(triggerCallback: (WindowIdentifier, Iterator[OUT]) => Unit): Unit = {
+  override def start(triggerCallback: TriggerCallback[OUT]): Unit = {
     super.start(triggerCallback)
     println("start time window...")
     executor.scheduleAtFixedRate(
@@ -138,6 +138,6 @@ object Window {
   def tumblingWindow[IN: ClassTag, OUT: ClassTag](
     windowDuration: Duration,
     allowedLatency: Duration = Duration(0, TimeUnit.MILLISECONDS)): Unit ={
-    slidingWindow(windowDuration, windowDuration, allowedLatency)
+    slidingWindow[IN, OUT](windowDuration, windowDuration, allowedLatency)
   }
 }

@@ -1,12 +1,12 @@
 package org.apache.spark.streaming.sstream
 
-import org.apache.spark.rdd.RDD
+import org.apache.spark.rdd.{PairRDDFunctions, RDD}
 import org.apache.spark.shuffle.pipeline.PipelineEvent
 
 import scala.reflect.ClassTag
 
 class SRDD[T: ClassTag] private[spark] (
-    internalRDD: RDD[PipelineEvent[T]]) {
+  var internalRDD: RDD[PipelineEvent[T]]) {
   def processCheckPoint(pipelineEvent: PipelineEvent[T]) = {
   }
 
@@ -19,18 +19,10 @@ class SRDD[T: ClassTag] private[spark] (
       var ret: PipelineEvent[U] = null
       if (e.isCheckpoint) {
         processCheckPoint(e)
-        ret = new PipelineEvent[U](
-          e.eventType,
-          null.asInstanceOf[U],
-          e.nonData,
-          e.eventTime)
+        ret = PipelineEvent.convertNonDataEvent[U](e)
       } else if (e.isWaterMark) {
         processWaterMark(e)
-        ret = new PipelineEvent[U](
-          e.eventType,
-          null.asInstanceOf[U],
-          e.nonData,
-          e.eventTime)
+        ret = PipelineEvent.convertNonDataEvent[U](e)
       } else {
         val processedData = f(e.data)
         ret = new PipelineEvent[U](
@@ -70,30 +62,24 @@ class SRDD[T: ClassTag] private[spark] (
       var ret: TraversableOnce[PipelineEvent[U]] = null
       if(pipelineEvent.isCheckpoint) {
         processCheckPoint(pipelineEvent)
-        ret = Iterator(new PipelineEvent[U](
-          pipelineEvent.eventType,
-          null.asInstanceOf[U],
-          pipelineEvent.nonData,
-          pipelineEvent.eventTime))
+        ret = Iterator(PipelineEvent.convertNonDataEvent[U](pipelineEvent))
       } else if(pipelineEvent.isWaterMark) {
         processWaterMark(pipelineEvent)
-        ret = Iterator(new PipelineEvent[U](
-          pipelineEvent.eventType,
-          null.asInstanceOf[U],
-          pipelineEvent.nonData,
-          pipelineEvent.eventTime))
+        ret = Iterator(PipelineEvent.convertNonDataEvent[U](pipelineEvent))
       } else {
-        ret = f(pipelineEvent.data).map(u => new PipelineEvent[U](
-          pipelineEvent.eventType,
-          u,
-          pipelineEvent.nonData,
-          pipelineEvent.eventTime
-        ))
+        ret = f(pipelineEvent.data).map(u => PipelineEvent.dataEvent(u, pipelineEvent.eventTime))
       }
       ret
     }
 
     val newRDD = internalRDD.flatMap(flatMapFunc)
     new SRDD[U](newRDD)
+  }
+}
+
+object RDD {
+  implicit def srddToPairSRDDFunctions[K, V](srdd: SRDD[(K,V)])
+    (implicit kt: ClassTag[K], vt: ClassTag[V]): SRDDPairFunctions[K, V] = {
+    new SRDDPairFunctions(srdd)
   }
 }

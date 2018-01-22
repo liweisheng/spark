@@ -22,6 +22,8 @@ import java.nio.ByteBuffer
 
 import org.apache.spark.util.io.ChunkedByteBufferOutputStream
 
+import scala.reflect.ClassTag
+
 private[spark] class PipelineEvent[DATATYPE](
     val eventType: PipelineEvent.EvenType,
     val data: DATATYPE,
@@ -55,4 +57,21 @@ private[spark] object PipelineEvent {
   val BLOCKEND: EvenType = 3.asInstanceOf[Byte]
 
   val BLOCK_END_EVENT: PipelineEvent[Any] = new PipelineEvent[Any](BLOCKEND, null, null, Long.MaxValue)
+
+  def dataEvent[T: ClassTag](data: T, eventTime: Long): PipelineEvent[T] = {
+    new PipelineEvent[T](
+      DATA,
+      data,
+      null,
+      eventTime)
+  }
+
+  def convertNonDataEvent[THAT](event: PipelineEvent[_]): PipelineEvent[THAT] = {
+    new PipelineEvent(
+      event.eventType,
+      null.asInstanceOf[THAT],
+      event.nonData,
+      event.eventTime)
+  }
+
 }
