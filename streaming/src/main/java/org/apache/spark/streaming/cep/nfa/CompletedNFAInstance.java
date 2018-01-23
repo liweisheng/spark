@@ -27,16 +27,20 @@ import java.util.Map;
  * CompletedNFAInstance with all events already matched.
  * */
 public class CompletedNFAInstance<T> {
-    private long startTimeStamp;
-    private final Map<String, LinkedList<T>> pattern2Events;
+    private long startTimestamp;
+    private final Map<String, List<T>> pattern2Events;
 
-    public CompletedNFAInstance(long startTimeStamp, Map<String, LinkedList<T>> pattern2Events) {
-        this.startTimeStamp = startTimeStamp;
+    public CompletedNFAInstance(long startTimestamp, Map<String, List<T>> pattern2Events) {
+        this.startTimestamp = startTimestamp;
         this.pattern2Events = pattern2Events;
     }
 
-    public long getStartTimeStamp() {
-        return startTimeStamp;
+    public Map<String, List<T>> getPattern2Events() {
+        return pattern2Events;
+    }
+
+    public long getStartTimestamp() {
+        return startTimestamp;
     }
 
     public List<T> get(String patternName){

@@ -34,7 +34,8 @@ class SRDDPairFunctions[K, V](self: SRDD[(K, V)])
     new SRDD[(WindowIdentifier, Iterator[OUT])](windowRDD)
   }
 
-  def splitByKey(partitioners: Array[Partitioner] = Array.empty,
+  def splitByKey(
+    partitioners: Array[Partitioner],
     splitNames: List[String],
     outputSelector: OutputSelector[K, String],
     serializer: Serializer): Array[(String, SRDD[(K, V)])] = {
@@ -42,6 +43,8 @@ class SRDDPairFunctions[K, V](self: SRDD[(K, V)])
     require(splitNames != null, "splitNames should not be null")
     require(splitNames.forall(_ != null), "splitNames should not contain null value")
     require(outputSelector != null, "outputSelector should not be null")
+    require(partitioners.length == splitNames.length, s"partitioner length: ${partitioners.length}," +
+      s" expected:${splitNames.length}")
 
     val splits = new Array[Int](splitNames.length)
     val splitAliases = Array[Any](splitNames.length)

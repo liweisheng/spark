@@ -23,12 +23,13 @@ import org.apache.spark.streaming.cep.conditions.AndCondition;
 import org.apache.spark.streaming.cep.conditions.IterableCondition;
 import org.apache.spark.streaming.cep.conditions.OrCondition;
 
+import java.io.Serializable;
 import java.util.concurrent.TimeUnit;
 
 /**
  * @param <T> type of value
  * */
-public class Pattern<T> {
+public class Pattern<T> implements Serializable {
     private String name;
 
     private Time withInTime = Time.MAX_TIME;

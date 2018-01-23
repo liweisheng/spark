@@ -60,8 +60,8 @@ public class NFA<T> {
         //1. should process timeout
         runningInstances.add(newInstance(startState, timestamp));
 
-        Set<NFARunningInstance<T>> finalInstances = new HashSet<>();
-        Set<NFARunningInstance<T>> timeoutInstances = new HashSet<>();
+        Set<NFARunningInstance<T>> finalInstances = new LinkedHashSet<>();
+        Set<NFARunningInstance<T>> timeoutInstances = new LinkedHashSet<>();
 
         Iterator<NFARunningInstance<T>> iter = runningInstances.iterator();
 

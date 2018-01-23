@@ -2,6 +2,7 @@ package org.apache.spark.streaming.sstream
 
 import org.apache.spark.rdd.{PairRDDFunctions, RDD}
 import org.apache.spark.shuffle.pipeline.PipelineEvent
+import org.apache.spark.streaming.cep.nfa.Pattern
 
 import scala.reflect.ClassTag
 
@@ -74,6 +75,13 @@ class SRDD[T: ClassTag] private[spark] (
 
     val newRDD = internalRDD.flatMap(flatMapFunc)
     new SRDD[U](newRDD)
+  }
+
+  def pattern[U: ClassTag](
+    pattern: Pattern[T],
+    patternProcessor: PatternProcessor[T, U]): SRDD[U] = {
+    val patternRDD = new PatternRDD[T, U](internalRDD, pattern, patternProcessor)
+    new SRDD[U](patternRDD)
   }
 }
 

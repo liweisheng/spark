@@ -19,7 +19,9 @@ package org.apache.spark.streaming.cep.nfa;
 
 import org.apache.spark.streaming.cep.conditions.IterableCondition;
 
-public class StateTransition<T> {
+import java.io.Serializable;
+
+public class StateTransition<T> implements Serializable {
     private IterableCondition<T> condition;
     private State<T> sourceState;
     private State<T> targetState;

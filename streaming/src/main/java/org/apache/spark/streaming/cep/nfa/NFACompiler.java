@@ -31,7 +31,7 @@ import java.util.Set;
 /**
  * @param <T> type of event NFA matches
  * */
-public class Compiler<T> {
+public class NFACompiler<T> {
     private final String FINAL_STATE = "_$FINAL";
     private final String START_STATE = "_$START";
     private final String NORMAL_STATE = "_$NORMAL";
@@ -52,13 +52,13 @@ public class Compiler<T> {
 
     private Time timeWindow = Time.MAX_TIME;
 
-    private Compiler(Pattern pattern) {
+    private NFACompiler(Pattern<T> pattern) {
         this.pattern = pattern;
     }
 
-    public static <E> Compiler newCompiler(
+    public static <E> NFACompiler<E> newCompiler(
         Pattern<E> pattern){
-        Compiler compiler = new Compiler(pattern);
+        NFACompiler<E> compiler = new NFACompiler(pattern);
         return compiler;
     }
 

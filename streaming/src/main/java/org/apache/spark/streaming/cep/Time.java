@@ -17,12 +17,10 @@
 
 package org.apache.spark.streaming.cep;
 
+import java.io.Serializable;
 import java.util.concurrent.TimeUnit;
 
-/**
- * @author liweisheng
- */
-public class Time implements Comparable<Time>{
+public class Time implements Comparable<Time>, Serializable{
     public static final Time MAX_TIME = Time.ofMillis(Long.MAX_VALUE);
 
     private TimeUnit timeUnit;

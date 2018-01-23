@@ -116,7 +116,7 @@ public class NFARunningInstance<T> {
         return entry == null? new LinkedList<T>(): entry.getOwnerBuffer().extractEventSeq(entry, deweyNumber);
     }
 
-    public Map<String, LinkedList<T>> classifiedMatchedSeq(){
+    public Map<String, List<T>> classifiedMatchedSeq(){
         SharedBuffer.ReferenceCountBufferEntry entry = edge == null ? null : edge.getPreviousEntry();
         return entry == null ? new HashMap<>() : entry.getOwnerBuffer().extractClassifiedEventSeq(entry, deweyNumber);
     }

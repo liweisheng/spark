@@ -17,12 +17,13 @@
 
 package org.apache.spark.streaming.cep.conditions;
 
+import java.io.Serializable;
 import java.util.Iterator;
 
 /**
  * @param <T> type of value
  *
  **/
-public interface IterableCondition<T> {
+public interface IterableCondition<T> extends Serializable {
     boolean match(T value, Iterator<T> values);
 }

@@ -90,14 +90,14 @@ public class SharedBuffer<T> {
     /**
      * Return matched events sequence which classified by their pattern.
      * */
-    public Map<String, LinkedList<T>> extractClassifiedEventSeq(
+    public Map<String, List<T>> extractClassifiedEventSeq(
             ReferenceCountBufferEntry<T> fromEntry,
             DeweyNumber deweyNumber){
-        Map<String, LinkedList<T>> ret = new LinkedHashMap<>();
+        Map<String, List<T>> ret = new LinkedHashMap<>();
         ReferenceCountBufferEntry<T> currentEntry = fromEntry;
         DeweyNumber currentDeweyNumber = deweyNumber;
 
-        LinkedList<T> seqInSameBucket;
+        List<T> seqInSameBucket;
         String key;
         while(currentEntry != ORIGIN_ENTRY && currentEntry != null){
             if(!currentEntry.ignore()){
@@ -109,7 +109,7 @@ public class SharedBuffer<T> {
                     ret.put(key, seqInSameBucket);
                 }
 
-                seqInSameBucket.addFirst(currentEntry.getValue());
+                ((LinkedList)seqInSameBucket).addFirst(currentEntry.getValue());
             }
 
             List<ForwardEdge> forwardEdges = currentEntry.forwardEdges;
