@@ -17,7 +17,7 @@
 
 package org.apache.spark.streaming.sstream
 
-import java.util.concurrent.{LinkedBlockingQueue, TimeUnit}
+import java.util.concurrent.{Executors, LinkedBlockingQueue, TimeUnit}
 
 import org.apache.spark.{InterruptibleIterator, Partition, SparkContext, TaskContext}
 import org.apache.spark.rdd.RDD
@@ -30,10 +30,16 @@ private[spark] class SourceFunctionPartition[T: ClassTag](
     var sourceIndex: Int,
     var sourceFunction: SourceFunction[T]) extends Partition{
 
+  private[this] val executor = Executors.newFixedThreadPool(1)
+
   private[this] val defaultOutputCollector: DefaultOutputCollector[T] = new DefaultOutputCollector[T]
 
   def iterator: Iterator[T] = {
-    sourceFunction.run(defaultOutputCollector)
+    executor.submit(new Runnable {
+      override def run() = {
+        sourceFunction.run(defaultOutputCollector)
+      }
+    })
     defaultOutputCollector.iterator()
   }
 

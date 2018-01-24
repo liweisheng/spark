@@ -24,12 +24,14 @@ import org.apache.spark.shuffle.pipeline.PipelineEvent
 import scala.reflect.ClassTag
 
 class SStreamContext private[streaming] (
-   _sc: SparkContext
+   @transient private var _sc: SparkContext
   ) extends Logging{
+
+  def sc = _sc
 
   def source[T: ClassTag](
      sourceFunctions: Array[SourceFunction[T]],
-     eventTimeExtractor: EventTimeExtractor[T]): SRDD[T] = {
+     eventTimeExtractor: EventtimeExtractor[T]): SRDD[T] = {
     val sourceRDD = new SourceRDD[T](_sc, sourceFunctions)
     val sourceEventRDD = sourceRDD.map(
       event => {
@@ -37,6 +39,6 @@ class SStreamContext private[streaming] (
         PipelineEvent.dataEvent[T](event, eventTime)
       })
 
-    new SRDD[T](sourceEventRDD)
+    new SRDD[T](this, sourceEventRDD)
   }
 }

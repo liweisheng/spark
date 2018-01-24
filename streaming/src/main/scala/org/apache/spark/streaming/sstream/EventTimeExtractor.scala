@@ -1,5 +1,5 @@
 package org.apache.spark.streaming.sstream
 
-trait EventTimeExtractor[T] {
+trait EventtimeExtractor[T] extends Serializable{
   def extractEventTime(event: T): Long
 }

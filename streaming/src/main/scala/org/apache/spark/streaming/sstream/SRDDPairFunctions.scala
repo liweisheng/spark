@@ -31,7 +31,7 @@ class SRDDPairFunctions[K, V](self: SRDD[(K, V)])
     val keyedRDD = new KeyedRDD[K, V](prev, part, dep )
 
     val windowRDD = new WindowRDD(keyedRDD, window)
-    new SRDD[(WindowIdentifier, Iterator[OUT])](windowRDD)
+    new SRDD[(WindowIdentifier, Iterator[OUT])](self.ssc, windowRDD)
   }
 
   def splitByKey(
@@ -61,7 +61,7 @@ class SRDDPairFunctions[K, V](self: SRDD[(K, V)])
           splitAliases, index, outputSelector, shuffleId)
 
         val keyedRDD = new KeyedRDD[K, V](prev, partitioners(index), dep)
-        ret(index) = (nameIndex._1, new SRDD(keyedRDD))
+        ret(index) = (nameIndex._1, new SRDD(self.ssc, keyedRDD))
       }
     )
 
