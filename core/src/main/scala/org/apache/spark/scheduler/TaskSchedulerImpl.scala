@@ -425,8 +425,8 @@ private[spark] class TaskSchedulerImpl private[scheduler](
               }
             }else if (TaskState.isPipeline(state)){
               cleanupPipelineTaskState(tid)
-              taskSet.removeRunningTask(tid)
-
+//              taskSet.removeRunningTask(tid)
+              taskResultGetter.enqueuePipelineTask(taskSet, tid, serializedData)
             }
           case None =>
             logError(
@@ -476,7 +476,7 @@ private[spark] class TaskSchedulerImpl private[scheduler](
       taskSetManager: TaskSetManager,
       tid: Long,
       pipelineStatus: PipelineStatus):Unit = synchronized{
-
+    taskSetManager.handlePipelineTaskStartup(tid, pipelineStatus)
   }
 
   def handleSuccessfulTask(

@@ -17,11 +17,11 @@
 
 package org.apache.spark.streaming.sstream
 
-import java.util.concurrent.{Executors, LinkedBlockingQueue, TimeUnit}
+import java.util.concurrent._
 
 import org.apache.spark.{InterruptibleIterator, Partition, SparkContext, TaskContext}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.util.NextIterator
+import org.apache.spark.util.{NextIterator, ThreadUtils}
 
 import scala.reflect.ClassTag
 
@@ -30,12 +30,23 @@ private[spark] class SourceFunctionPartition[T: ClassTag](
     var sourceIndex: Int,
     var sourceFunction: SourceFunction[T]) extends Partition{
 
-  private[this] val executor = Executors.newFixedThreadPool(1)
+  @transient
+  private[this] var _executor: ExecutorService = null.asInstanceOf[ExecutorService]
 
-  private[this] val defaultOutputCollector: DefaultOutputCollector[T] = new DefaultOutputCollector[T]
+  private[this] def executor(): ExecutorService = synchronized {
+    if(_executor == null) {
+      _executor = ThreadUtils.newDaemonFixedThreadPool(1,
+        s"SourceFunctionPartition_${rddId}_${sourceIndex}_${sourceFunction.toString}")
+    }
+
+    _executor
+  }
+
+  @transient
+  lazy private[this] val defaultOutputCollector: DefaultOutputCollector[T] = new DefaultOutputCollector[T]
 
   def iterator: Iterator[T] = {
-    executor.submit(new Runnable {
+    executor().submit(new Runnable {
       override def run() = {
         sourceFunction.run(defaultOutputCollector)
       }
@@ -62,7 +73,7 @@ private class DefaultOutputCollector[T: ClassTag] extends OutputCollector[T] {
   @volatile
   var closed = false
 
-  private[this] val blockingQueue = new LinkedBlockingQueue[T]()
+  lazy private[this] val blockingQueue = new LinkedBlockingQueue[T]()
 
   override def collect(data: T): Unit = {
     blockingQueue.put(data)

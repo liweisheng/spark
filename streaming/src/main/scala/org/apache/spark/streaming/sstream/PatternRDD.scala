@@ -17,14 +17,14 @@
 
 package org.apache.spark.streaming.sstream
 
-import java.util.concurrent.{Executors, LinkedBlockingQueue, TimeUnit}
+import java.util.concurrent._
 import java.util.function.Consumer
 
 import org.apache.spark.{Partition, TaskContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.shuffle.pipeline.PipelineEvent
 import org.apache.spark.streaming.cep.nfa.{CompletedNFAInstance, NFA, NFACompiler, Pattern}
-import org.apache.spark.util.NextIterator
+import org.apache.spark.util.{NextIterator, ThreadUtils}
 
 import scala.reflect.ClassTag
 
@@ -35,7 +35,17 @@ private[spark] class PatternRDD[T: ClassTag, U: ClassTag](
     patternProcessor: PatternProcessor[T, U])
   extends RDD[PipelineEvent[U]](prev) {
 
-  private[this] val executor = Executors.newFixedThreadPool(1)
+  @transient
+  private[this] var _executor: ExecutorService = null.asInstanceOf[ExecutorService]
+
+  private[this] def executor(partitionId: Int): ExecutorService = synchronized {
+    if(_executor == null) {
+      _executor = ThreadUtils.newDaemonFixedThreadPool(1,
+        s"PatternRDD_${id}_${partitionId}_${patternProcessor.toString}")
+    }
+
+    _executor
+  }
 
   override def compute(split: Partition, context: TaskContext): Iterator[PipelineEvent[U]] = {
     val parentIter = firstParent[PipelineEvent[T]].iterator(split, context)
@@ -43,7 +53,7 @@ private[spark] class PatternRDD[T: ClassTag, U: ClassTag](
     val nfa = nfaFactory.createNFA()
 
     val patternProcessorTask = new PatternProcessorTask[T, U](parentIter, patternProcessor, nfa)
-    executor.submit(patternProcessorTask)
+    executor(split.index).submit(patternProcessorTask)
     patternProcessorTask.iterator()
   }
 

@@ -22,12 +22,12 @@ import java.nio.ByteBuffer
 import java.util.Properties
 
 import scala.language.existentials
-
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
 import org.apache.spark.shuffle.ShuffleWriter
+import org.apache.spark.shuffle.pipeline.{PipelineEvent, PipelineShuffleWriter}
 
 /**
  * A ShuffleMapTask divides the elements of an RDD into multiple buckets (based on a partitioner
@@ -94,10 +94,19 @@ private[spark] class ShuffleMapTask(
     try {
       val manager = SparkEnv.get.shuffleManager
       writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)
-      writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
+      if(writer.isInstanceOf[PipelineShuffleWriter[_, _]]) {
+        val pipelineShuffleWriter = writer.asInstanceOf[PipelineShuffleWriter[Any, Any]]
+
+        val iter = rdd.compute(partition, context)
+        pipelineShuffleWriter.writeAll(iter.
+          asInstanceOf[Iterator[PipelineEvent[Product2[Any, Any]]]])
+      } else {
+        writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
+      }
       writer.stop(success = true).get
     } catch {
       case e: Exception =>
+        log.debug("e=", e)
         try {
           if (writer != null) {
             writer.stop(success = false)

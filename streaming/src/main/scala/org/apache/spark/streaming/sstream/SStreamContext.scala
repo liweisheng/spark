@@ -23,9 +23,9 @@ import org.apache.spark.shuffle.pipeline.PipelineEvent
 
 import scala.reflect.ClassTag
 
-class SStreamContext private[streaming] (
+class SStreamContext (
    @transient private var _sc: SparkContext
-  ) extends Logging{
+  ) extends Logging with Serializable{
 
   def sc = _sc
 

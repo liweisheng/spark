@@ -20,6 +20,6 @@ package org.apache.spark.streaming.window
 import scala.reflect.ClassTag
 
 
-abstract class TriggerCallback[T: ClassTag] {
+abstract class TriggerCallback[T: ClassTag] extends Serializable{
   def call(windowIdentifier: WindowIdentifier, computedData: Iterator[T])
 }

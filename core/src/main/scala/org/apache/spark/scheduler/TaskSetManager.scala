@@ -706,7 +706,7 @@ private[spark] class TaskSetManager(
     val info = taskInfos(tid)
     val index = info.index
     info.markRunningAsPipeline(clock.getTimeMillis())
-    removeRunningTask(tid)
+//    removeRunningTask(tid)
 
     if(!successful(index)){
       tasksSuccessful += 1
@@ -719,7 +719,6 @@ private[spark] class TaskSetManager(
       }
     }
 
-    //TODO:
     sched.dagScheduler.pipelineTaskRunning(tasks(index), PipelineRunning, pipelineStatus, info)
   }
 

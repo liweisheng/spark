@@ -17,7 +17,7 @@
 
 package org.apache.spark.streaming.sstream
 
-import java.util.concurrent.{Executors, LinkedBlockingDeque, TimeUnit}
+import java.util.concurrent.{ExecutorService, Executors, LinkedBlockingDeque, TimeUnit}
 
 import org.apache.spark.{Partition, SparkContext, TaskContext}
 import org.apache.spark.rdd.RDD
@@ -36,7 +36,16 @@ private[spark] class WindowRDD[IN: ClassTag, OUT: ClassTag](
 
   private[this] val defaultTriggerCallback = new DefaultTriggerCallback[OUT]
 
-  private[this] val executor = Executors.newFixedThreadPool(1)
+  @transient
+  private[this] var _executor: ExecutorService = null.asInstanceOf[ExecutorService]
+
+  private[this] def executor(): ExecutorService = {
+    if(_executor == null) {
+      _executor = Executors.newFixedThreadPool(1)
+    }
+
+    _executor
+  }
 
   override def compute(split: Partition, context: TaskContext):
     Iterator[PipelineEvent[(WindowIdentifier, Iterator[OUT])]] = {

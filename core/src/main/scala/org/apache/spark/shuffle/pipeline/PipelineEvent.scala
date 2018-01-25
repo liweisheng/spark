@@ -28,7 +28,7 @@ private[spark] class PipelineEvent[DATATYPE](
     val eventType: PipelineEvent.EvenType,
     val data: DATATYPE,
     val nonData: Any,
-    val eventTime: Long){
+    val eventTime: Long) extends Serializable{
   import PipelineEvent._
 
   def isData: Boolean = {

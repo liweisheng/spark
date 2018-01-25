@@ -79,6 +79,7 @@ private[spark] class CoarseGrainedExecutorBackend(
   override def receive: PartialFunction[Any, Unit] = {
     case RegisteredExecutor =>
       logInfo("Successfully registered with driver")
+      CoarseGrainedExecutorBackend.set(this)
       try {
         executor = new Executor(executorId, hostname, env, userClassPath, isLocal = false)
       } catch {

@@ -17,6 +17,9 @@
 
 package org.apache.spark.shuffle.pipeline
 
+import java.io.{ByteArrayOutputStream, ObjectOutputStream}
+import java.nio.ByteBuffer
+
 import org.apache.spark.executor.{CoarseGrainedExecutorBackend, Executor}
 import org.apache.spark.{SparkEnv, TaskContext, TaskState}
 import org.apache.spark.internal.Logging
@@ -58,8 +61,11 @@ private[spark] class PipelineShuffleWriter[K, V](
     * Notify driver the current task has been launched in pipeline mode
     */
   def notifyPipelineStartup(pipelineStatus : PipelineStatus) = {
-    val ser = SparkEnv.get.serializer.newInstance()
-    val serBytes = ser.serialize(pipelineStatus)
+    val baos = new ByteArrayOutputStream()
+    val oos = new ObjectOutputStream(baos)
+    pipelineStatus.writeExternal(oos)
+    oos.flush()
+    val serBytes = ByteBuffer.wrap(baos.toByteArray)
     CoarseGrainedExecutorBackend.get.statusUpdate(context.taskAttemptId(), TaskState.PIPELINE, serBytes)
   }
 
@@ -80,5 +86,8 @@ private[spark] class PipelineShuffleWriter[K, V](
   override def write(records: Iterator[Product2[K, V]]): Unit = ???
 
   /** Close this writer, passing along whether the map completed */
-  override def stop(success: Boolean): Option[MapStatus] = ???
+  override def stop(success: Boolean): Option[MapStatus] = {
+    stop()
+    None
+  }
 }

@@ -8,16 +8,11 @@ import scala.reflect.ClassTag
 
 class SRDD[T: ClassTag] private[spark] (
   @transient private var _ssc: SStreamContext,
-  var internalRDD: RDD[PipelineEvent[T]]) {
+  var internalRDD: RDD[PipelineEvent[T]]) extends Serializable{
+
+  import SRDD._
 
   def ssc = _ssc
-
-  def processCheckPoint(pipelineEvent: PipelineEvent[T]) = {
-  }
-
-  def processWaterMark(pipelineEvent: PipelineEvent[T]) = {
-  }
-
 
   def map[U: ClassTag](f: T => U): SRDD[U] = {
     val cleanF = ssc.sc.clean(f)
@@ -114,5 +109,11 @@ object SRDD {
   implicit def srddToPairSRDDFunctions[K, V](srdd: SRDD[(K,V)])
     (implicit kt: ClassTag[K], vt: ClassTag[V]): SRDDPairFunctions[K, V] = {
     new SRDDPairFunctions(srdd)
+  }
+
+  def processCheckPoint[T: ClassTag](pipelineEvent: PipelineEvent[T]) = {
+  }
+
+  def processWaterMark[T: ClassTag](pipelineEvent: PipelineEvent[T]) = {
   }
 }

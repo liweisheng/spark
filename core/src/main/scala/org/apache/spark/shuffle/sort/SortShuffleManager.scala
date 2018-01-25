@@ -89,6 +89,9 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       shuffleId: Int,
       numMaps: Int,
       dependency: ShuffleDependency[K, V, C]): ShuffleHandle = {
+    if(dependency.isInstanceOf[SplitDependency[K, V]]){
+      return new PipelineShuffleHandle[K,V](shuffleId, numMaps, dependency.asInstanceOf[SplitDependency[K, V]])
+    }
     if (SortShuffleWriter.shouldBypassMergeSort(conf, dependency)) {
       // If there are fewer than spark.shuffle.sort.bypassMergeThreshold partitions and we don't
       // need map-side aggregation, then write numPartitions files directly and just concatenate
@@ -101,9 +104,7 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       // Otherwise, try to buffer map outputs in a serialized form, since this is more efficient:
       new SerializedShuffleHandle[K, V](
         shuffleId, numMaps, dependency.asInstanceOf[ShuffleDependency[K, V, V]])
-    } else if(dependency.pipeline || dependency.isInstanceOf[SplitDependency[K, V]]){
-      new PipelineShuffleHandle[K,V](shuffleId, numMaps, dependency.asInstanceOf[ShuffleDependency[K,V,V]])
-    } else {
+    }  else {
       // Otherwise, buffer map outputs in a deserialized form:
       new BaseShuffleHandle(shuffleId, numMaps, dependency)
     }
@@ -209,7 +210,7 @@ private[spark] object SortShuffleManager extends Logging {
       log.debug(s"Can't use serialized shuffle for shuffle $shufId because it has more than " +
         s"$MAX_SHUFFLE_OUTPUT_PARTITIONS_FOR_SERIALIZED_MODE partitions")
       false
-    } else if(dependency.pipeline){
+    } else if(dependency.isInstanceOf[SplitDependency[_, _]]){
       log.debug(s"Can't use serialized shuffle for shuffle $shufId because it is a pipeline shuffle")
       false
     }else {
@@ -226,7 +227,7 @@ private[spark] object SortShuffleManager extends Logging {
 private[spark] class PipelineShuffleHandle[K, V](
   shuffleId: Int,
   numMaps: Int,
-  dependency: ShuffleDependency[K,V,V])
+  dependency: SplitDependency[K ,V])
 extends BaseShuffleHandle(shuffleId, numMaps, dependency){
   def isSplitDep: Boolean = {
     return dependency.isInstanceOf[SplitDependency[K, V]]

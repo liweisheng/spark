@@ -73,8 +73,7 @@ class ShuffleDependency[K: ClassTag, V: ClassTag, C: ClassTag](
     val serializer: Serializer = SparkEnv.get.serializer,
     val keyOrdering: Option[Ordering[K]] = None,
     val aggregator: Option[Aggregator[K, V, C]] = None,
-    val mapSideCombine: Boolean = false,
-    val pipeline: Boolean = false)
+    val mapSideCombine: Boolean = false)
   extends Dependency[Product2[K, V]] {
 
   override def rdd: RDD[_] = _rdd
@@ -104,7 +103,7 @@ class SplitDependency[K: ClassTag, V: ClassTag](
     val splitIndex: Int,
     val outputSelector: OutputSelector[K, _],
     override val shuffleId: Int)
-  extends ShuffleDependency[K,V,V](null, null, serializer, null, null, false, true)
+  extends ShuffleDependency[K,V,V](_rdd.map(_.data), null.asInstanceOf[Partitioner], serializer)
   {
 
   if(splits.isEmpty){
@@ -116,6 +115,7 @@ class SplitDependency[K: ClassTag, V: ClassTag](
     s"splits length:${splits.length} is not equal with partitioner length:${partitioners.length}")
 
   override def rdd: RDD[_] = _rdd
+
 
   override val shuffleHandle: ShuffleHandle = rdd.context.env.shuffleManager.registerShuffle(
     shuffleId, _rdd.partitions.length, this)

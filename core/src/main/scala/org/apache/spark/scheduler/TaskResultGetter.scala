@@ -17,16 +17,17 @@
 
 package org.apache.spark.scheduler
 
+import java.io.{ByteArrayInputStream, ObjectInputStream}
 import java.nio.ByteBuffer
 import java.util.concurrent.{ExecutorService, RejectedExecutionException}
 
 import scala.language.existentials
 import scala.util.control.NonFatal
-
 import org.apache.spark._
 import org.apache.spark.TaskState.TaskState
 import org.apache.spark.internal.Logging
 import org.apache.spark.serializer.SerializerInstance
+import org.apache.spark.storage.{BlockManagerId, PipelineManagerId}
 import org.apache.spark.util.{LongAccumulator, ThreadUtils, Utils}
 
 /**
@@ -58,10 +59,19 @@ private[spark] class TaskResultGetter(sparkEnv: SparkEnv, scheduler: TaskSchedul
       taskSetManager: TaskSetManager,
       tid: Long,
       serializedData: ByteBuffer): Unit = {
-    val result = serializer.get().deserialize[PipelineStatus](serializedData)
-    scheduler.handlePipelineTaskStartup(taskSetManager, tid, result)
-
+    try {
+      val pipelineStatus = new PipelineStatus(-1, null.asInstanceOf[PipelineManagerId],
+        null.asInstanceOf[BlockManagerId])
+      val bais = new ByteArrayInputStream(serializedData.array())
+      val ois = new ObjectInputStream(bais)
+      pipelineStatus.readExternal(ois)
+      scheduler.handlePipelineTaskStartup(taskSetManager, tid, pipelineStatus)
+    } catch {
+      case e => logError("e=", e)
+    }
   }
+
+
   def enqueueSuccessfulTask(
       taskSetManager: TaskSetManager,
       tid: Long,

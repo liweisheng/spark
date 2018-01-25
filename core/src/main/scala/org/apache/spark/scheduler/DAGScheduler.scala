@@ -223,7 +223,7 @@ class DAGScheduler(
       pipelineStatus: PipelineStatus,
       taskInfo: TaskInfo): Unit = {
     eventProcessLoop.post(PipelineTaskEvent(task, reason, pipelineStatus, taskInfo))
-
+    eventProcessLoop.post(PipelineTaskEvent(task, reason, pipelineStatus, taskInfo))
   }
 
   /**
@@ -1181,7 +1181,7 @@ class DAGScheduler(
                 logInfo("Ignoring result from " + rt + " because its job has been canceled")
             }
 
-          case smt: ShuffleMapStage =>
+          case smt: ShuffleMapTask =>
             val shuffleMapStage = stage.asInstanceOf[ShuffleMapStage]
             val pipelineStatus = event.result.asInstanceOf[PipelineStatus]
             val execID = pipelineStatus.location.executorId
@@ -1198,7 +1198,7 @@ class DAGScheduler(
               shuffleMapStage.pendingPartitions -= task.partitionId
             }
 
-            if(runningStages.contains(smt) && shuffleMapStage.pendingPartitions.isEmpty){
+            if(runningStages.contains(shuffleMapStage) && shuffleMapStage.pendingPartitions.isEmpty){
               runningStages -= shuffleMapStage
               logInfo("stage[id:%s, attempId:%s] finished in pipeline mode, looking for newly runnable stages".
                 format(shuffleMapStage.id, shuffleMapStage.latestInfo.attemptId))

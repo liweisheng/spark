@@ -17,6 +17,6 @@
 
 package org.apache.spark
 
-trait OutputSelector[K,R] {
+trait OutputSelector[K,R] extends Serializable{
   def select(key: K): Array[R]
 }
