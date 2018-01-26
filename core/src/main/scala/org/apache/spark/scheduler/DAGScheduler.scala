@@ -223,7 +223,6 @@ class DAGScheduler(
       pipelineStatus: PipelineStatus,
       taskInfo: TaskInfo): Unit = {
     eventProcessLoop.post(PipelineTaskEvent(task, reason, pipelineStatus, taskInfo))
-    eventProcessLoop.post(PipelineTaskEvent(task, reason, pipelineStatus, taskInfo))
   }
 
   /**

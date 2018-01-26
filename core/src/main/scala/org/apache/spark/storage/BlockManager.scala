@@ -1488,7 +1488,7 @@ private[spark] class BlockManager(
     m
   }
 
-  def setPipelineManager(pipelineManagerId: PipelineManagerId, pipelineOutputManager: PipelineManager[_, _]) = {
+  def registPipelineManager(pipelineManagerId: PipelineManagerId, pipelineOutputManager: PipelineManager[_, _]) = {
     pipelineOutputManagerMap.put(pipelineManagerId, pipelineOutputManager)
     lock.synchronized(
       lock.notifyAll()

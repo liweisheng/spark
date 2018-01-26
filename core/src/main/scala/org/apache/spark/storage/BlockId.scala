@@ -100,9 +100,9 @@ private[spark] case class TestBlockId(id: String) extends BlockId {
   override def name: String = "test_" + id
 }
 
-private[spark] case class PipelineManagerId(uniqueId: Long, mapId: Int) extends BlockId {
+private[spark] case class PipelineManagerId(uniqueId: Long, shuffleId: Int, mapId: Int) extends BlockId {
   /** A globally unique identifier for this Block. Can be used for ser/de. */
-  override def name: String = "pipeline_" + uniqueId + "_" + mapId
+  override def name: String = "pipeline_" + uniqueId + "_" + shuffleId + "_" + mapId
 }
 
 @DeveloperApi
@@ -115,7 +115,7 @@ object BlockId {
   val TASKRESULT = "taskresult_([0-9]+)".r
   val STREAM = "input-([0-9]+)-([0-9]+)".r
   val TEST = "test_(.*)".r
-  val PIPELINE = "pipeline_([0-9]+)_([0-9]+)".r
+  val PIPELINE = "pipeline_([0-9]+)_([0-9]+)_([0-9]+)".r
 
   /** Converts a BlockId "name" String back into a BlockId. */
   def apply(id: String): BlockId = id match {
@@ -135,8 +135,8 @@ object BlockId {
       StreamBlockId(streamId.toInt, uniqueId.toLong)
     case TEST(value) =>
       TestBlockId(value)
-    case PIPELINE(uniqueId, mapId) =>
-      PipelineManagerId(uniqueId.toLong, mapId.toInt)
+    case PIPELINE(uniqueId, shuffleId, mapId) =>
+      PipelineManagerId(uniqueId.toLong, shuffleId.toInt, mapId.toInt)
     case _ =>
       throw new IllegalStateException("Unrecognized BlockId: " + id)
   }

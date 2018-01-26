@@ -23,23 +23,25 @@ import org.apache.spark.storage.{BlockId, BlockManagerId, PipelineManagerId}
 
 private[spark] class PipelineStatus(
     private[this] var mapId: Int,
-    private[this] var pipelineOutputManagerId: PipelineManagerId,
+    private[this] var _pipelineManagerId: PipelineManagerId,
     private[this] var loc: BlockManagerId)
   extends Externalizable {
 
+  def this() = this(-1, null.asInstanceOf[PipelineManagerId], null.asInstanceOf[BlockManagerId])
+
   def location: BlockManagerId = loc
   def mapPartitionId: Int = mapId
-  def pipelineManagerId: PipelineManagerId = pipelineOutputManagerId
+  def pipelineManagerId: PipelineManagerId = _pipelineManagerId
 
   override def readExternal(in: ObjectInput): Unit = {
     mapId = in.readInt()
-    pipelineOutputManagerId = BlockId(in.readUTF()).asInstanceOf[PipelineManagerId]
+    _pipelineManagerId = BlockId(in.readUTF()).asInstanceOf[PipelineManagerId]
     loc = BlockManagerId(in)
   }
 
   override def writeExternal(out: ObjectOutput): Unit = {
     out.writeInt(mapId)
-    out.writeUTF(pipelineOutputManagerId.name)
+    out.writeUTF(_pipelineManagerId.name)
     loc.writeExternal(out)
   }
 }

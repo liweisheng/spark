@@ -2,7 +2,7 @@ package org.apache.spark.shuffle.pipeline
 
 import java.io.InputStream
 import java.lang.Long
-import java.util.concurrent.{BlockingQueue, LinkedBlockingQueue}
+import java.util.concurrent.{BlockingQueue, LinkedBlockingQueue, TimeUnit}
 
 import org.apache.spark.TaskContext
 import org.apache.spark.internal.Logging
@@ -78,13 +78,15 @@ private[spark] final class PipelineSegmentFetcherIterator(
               pipelineManagerId.name,
               subPipelineIndex,
               reduceId,
-              Long.MIN_VALUE,
+              System.currentTimeMillis(),
               new PipelineSegmentFetchingListener {
                 override def onPipelineSegmentFetchSuccess(pipelineManagerId: String, fetchId: Long, data: ManagedBuffer) = {
                   PipelineSegmentFetcherIterator.this.synchronized {
                     data.retain()
                     pipeline2Buffer.getOrElseUpdate(pipelineManagerId, new LinkedBlockingQueue[FetchResult]())
                       .put(new SuccessFetchResult(data))
+                    logInfo(s"Receive a segment, pipelineManagerId:${pipelineManagerId}, fetchId:${fetchId}, data size" +
+                      s":${data.size()}")
                   }
                 }
 
@@ -97,6 +99,8 @@ private[spark] final class PipelineSegmentFetcherIterator(
                 }
 
                 override def onPipelineEnd(pipelineManagerId: String, fetchId: Long): Unit = {
+                  logInfo(s"Receive pipeline end, pipelineManagerId:${pipelineManagerId}, last fetchId:${fetchId}, current time:" +
+                    s"${System.currentTimeMillis()}")
                   pipelineEndMark(pipelineManagerId) = true
                 }
               }
@@ -108,7 +112,7 @@ private[spark] final class PipelineSegmentFetcherIterator(
     }
   }
 
-  override def hasNext: Boolean = !pipelineEndMark.values.exists(_ == false)
+  override def hasNext: Boolean = pipelineEndMark.values.exists(_ == false)
 
   override def next(): InputStream = {
     if(!hasNext){
@@ -119,16 +123,23 @@ private[spark] final class PipelineSegmentFetcherIterator(
     var inputStream: InputStream = null
 
     while(result == null){
-      val dataQueue = pipeline2Buffer.get(nextPipeline())
+      val nextP = nextPipeline()
+      val dataQueue = pipeline2Buffer.get(nextP)
 
-      result = dataQueue.getOrElse(EMPTY_QUEUE).poll()
-
-      result match {
-        case r @ SuccessFetchResult(buf) =>
-          inputStream = buf.createInputStream()
-        case FailureFetchResult(e) =>
-          //TODO: process failure, we shall remove pipelineManagerId here? now we keep it.
-          result = null
+      if(dataQueue.isDefined) {
+        result = dataQueue.get.poll(100, TimeUnit.MILLISECONDS)
+        if(result != null) {
+          result match {
+            case r @ SuccessFetchResult(buf) =>
+              inputStream = buf.createInputStream()
+            case FailureFetchResult(e) =>
+              logError(s"FailureFetchResult, pipeline:${nextP}")
+              //TODO: process failure, we shall remove pipelineManagerId here? now we keep it.
+              result = null
+            case _ =>
+            //do nothing
+          }
+        }
       }
     }
 

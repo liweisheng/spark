@@ -64,6 +64,7 @@ class InMemoryPipelineReaderView[K, V](
         sendCallback.send(prepareToSend)
       }
     } else if(fetchId == lastFetchId + 1){
+      lastFetchId = fetchId
       val dataAndSize = inMemorySubPipeline.fetchPartitionData(reduceId)
 
       if(dataAndSize._1 == null && !inMemorySubPipeline.hasMoreData()){

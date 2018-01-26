@@ -39,7 +39,7 @@ private[spark] class PipelineShuffleWriter[K, V](
 
   private val blockManager = SparkEnv.get.blockManager
 
-  private val pipelineManagerId = PipelineManagerId(System.currentTimeMillis(), mapId)
+  private val pipelineManagerId = PipelineManagerId(System.currentTimeMillis(), handle.shuffleId, mapId)
 
   private val conf = SparkEnv.get.conf
 
@@ -54,6 +54,7 @@ private[spark] class PipelineShuffleWriter[K, V](
 
   def writeAll(records: Iterator[PipelineEvent[Product2[K, V]]]): Unit ={
     notifyPipelineStartup(new PipelineStatus(mapId, pipelineManagerId, blockManager.blockManagerId))
+    blockManager.registPipelineManager(pipelineManagerId, pipelineOutputManager)
     pipelineOutputManager.writeAll(records)
   }
 
