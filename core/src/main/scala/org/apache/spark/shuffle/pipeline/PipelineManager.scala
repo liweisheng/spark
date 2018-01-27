@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 import org.apache.spark.shuffle.pipeline.PipelineManager.OpenedPipelineId
 import org.apache.spark._
+import org.apache.spark.serializer.Serializer
 import org.apache.spark.shuffle.sort.PipelineShuffleHandle
 import org.apache.spark.storage.{BlockManager, PipelineManagerId}
 
@@ -33,12 +34,13 @@ private[spark] class PipelineManager[K,V](
   val handle: PipelineShuffleHandle[K,V],
   val context: TaskContext,
   val blockManager: BlockManager,
-  val pipelineMode: PipelineMode) {
+  val pipelineMode: PipelineMode,
+  val _serializer: Option[Serializer]) {
   require(maxPipelineSize > 10 * 1024, s"spark.pipeline.buffer.max should larger than 10M, your value:${maxPipelineSize}")
   private var dep: Either[SplitDependency[K,V], ShuffleDependency[K,V,V]] = _
 
-  private val serializer = SparkEnv.get.serializer
-  private val subpipelineViewId: AtomicLong = new AtomicLong(0)
+  private val serializer = _serializer.getOrElse(SparkEnv.get.serializer)
+  private val subPipelineViewId: AtomicLong = new AtomicLong(0)
   private var outputSelector: OutputSelector[K, _] = _
   private var splits: Array[Int] = Array.empty
   private var splitAliases: Array[Any] = Array.empty
@@ -178,7 +180,7 @@ private[spark] class PipelineManager[K,V](
     val subPipelineReaderView = subPipeline match {
       case _: InMemorySubPipeline[K, V] =>
         (new InMemoryPipelineReaderView[K, V](
-          new PipelineReaderViewId(subpipelineViewId.incrementAndGet()),
+          new PipelineReaderViewId(subPipelineViewId.incrementAndGet()),
           subPipeline,
           reduceId,
           startSyncId,

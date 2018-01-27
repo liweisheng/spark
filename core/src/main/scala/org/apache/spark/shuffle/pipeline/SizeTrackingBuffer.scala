@@ -39,6 +39,10 @@ private[spark] class SizeTrackingBuffer[T](initialCapacity: Int = 64)
   def iterator: Iterator[T] = {
     buffer.iterator
   }
+
+  def size: Int = {
+    buffer.size
+  }
 }
 
 private object SizeTrackingBuffer{

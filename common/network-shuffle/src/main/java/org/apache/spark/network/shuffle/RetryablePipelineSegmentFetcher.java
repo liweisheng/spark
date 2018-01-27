@@ -120,6 +120,7 @@ public class RetryablePipelineSegmentFetcher {
             LOG.info("Already receive data with fetchId:{}, discard it", fetchId);
             buffer = null;
         }else if(fetchId == lastAckFetchId + 1){
+            LOG.debug("Receive fetchId:{}, pipelineManagerId:{}", fetchId, pipelineManagerId);
             listener.onPipelineSegmentFetchSuccess(pipelineManagerId, fetchId, buffer);
             lastAckFetchId = fetchId;
             retryCount = 0;
@@ -127,6 +128,7 @@ public class RetryablePipelineSegmentFetcher {
             flightingFetchIds.add(nextFetchId);
             fetcher.fetchPipelineSegment();
         }else{
+            LOG.info("Receiver disordered segment, lastAckFetchId:{}, fetchId:{}", lastAckFetchId, fetchId);
             //I think disordered received of fetchId will never happen
         }
     }
@@ -152,7 +154,7 @@ public class RetryablePipelineSegmentFetcher {
 
     synchronized private void initiateRetry(Long fetchId){
         retryCount += 1;
-        LOG.info("Retrying fetch fetchId:{}, pipelineManagerId:{}", fetchId, pipelineManagerId);
+        LOG.info("Retry to send fetch, fetchId:{}, pipelineManagerId:{}", fetchId, pipelineManagerId);
         if(fetchId != Long.MIN_VALUE){
             flightingFetchIds.add(fetchId);
         }
@@ -205,7 +207,7 @@ public class RetryablePipelineSegmentFetcher {
                 @Override
                 public void onSuccess(ByteBuffer response) {
                     viewCreate = (PipelineReadViewCreate) BlockTransferMessage.Decoder.fromByteBuffer(response);
-                    LOG.trace("Successfully opened pipeline:{}, subPipelineIndex:{}, reduceId:{}, startFetchId:{}",
+                    LOG.debug("Successfully opened pipeline:{}, subPipelineIndex:{}, reduceId:{}, startFetchId:{}",
                             pipelineManagerId, subPipelineIndex, reduceId, startFetchId);
 
                     lastAckFetchId = viewCreate.startSyncId;
@@ -224,6 +226,7 @@ public class RetryablePipelineSegmentFetcher {
 
         public void fetchPipelineSegment(){
             Long nextId = flightingFetchIds.remove();
+            LOG.debug("Send fetch, fetchId:{}, pipelineManagerId:{}", nextId, pipelineManagerId);
             client.fetchPipelineSegment(pipelineManagerId, viewCreate.readViewId, nextId, callback);
         }
     }

@@ -17,6 +17,8 @@
 
 package org.apache.spark.shuffle.pipeline
 
+import java.util.concurrent.locks.ReentrantLock
+
 import org.apache.spark.Partitioner
 
 import scala.collection.mutable
@@ -95,21 +97,47 @@ private[spark] class InMemorySubPipeline[K,V](
 }
 
 private[spark] class SubPartition[K,V](
-    val part: Int){
+    val part: Int,
+    val maxBufferSize: Long = Long.MaxValue / 2){
 
   @volatile var buffer = new SizeTrackingBuffer[PipelineEvent[Product2[K,V]]]
+
+  private[this] val lock: ReentrantLock = new ReentrantLock()
+  private[this] val notFull = lock.newCondition()
+  private[this] val notEmpty = lock.newCondition()
 
   /**
    * @return size of buffer
    */
   def writeEvent(event: PipelineEvent[Product2[K,V]]): Long = {
-    buffer.append(event)
+    lock.lock()
+    try {
+      while(buffer.estimateSize() >= maxBufferSize) {
+        notFull.await()
+      }
+
+      buffer.append(event)
+      notEmpty.signal()
+    } finally {
+      lock.unlock()
+    }
+
     buffer.estimateSize()
   }
 
-  def getSnapshot(): SizeTrackingBuffer[PipelineEvent[Product2[K,V]]] = {
-    val oldBuffer = buffer;
-    buffer = new SizeTrackingBuffer[PipelineEvent[Product2[K, V]]]
-    oldBuffer
+  def getSnapshot(): SizeTrackingBuffer[PipelineEvent[Product2[K,V]]] = synchronized {
+    lock.lock()
+    try {
+      while(buffer.size == 0) {
+        notEmpty.await()
+      }
+
+      val oldBuffer = buffer;
+      buffer = new SizeTrackingBuffer[PipelineEvent[Product2[K, V]]]
+      notFull.signal()
+      oldBuffer
+    } finally {
+      lock.unlock()
+    }
   }
 }

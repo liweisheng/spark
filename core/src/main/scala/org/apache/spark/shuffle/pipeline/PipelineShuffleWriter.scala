@@ -49,7 +49,7 @@ private[spark] class PipelineShuffleWriter[K, V](
     .getOrElse(DEFAULT_BUFFER_MAX)
 
   private var pipelineOutputManager = new PipelineManager(maxPipelineBufferSizeInBytes,
-    pipelineManagerId, handle, context, blockManager, MemoryPipelineMode())
+    pipelineManagerId, handle, context, blockManager, MemoryPipelineMode(), Option(dep.serializer))
 
 
   def writeAll(records: Iterator[PipelineEvent[Product2[K, V]]]): Unit ={
