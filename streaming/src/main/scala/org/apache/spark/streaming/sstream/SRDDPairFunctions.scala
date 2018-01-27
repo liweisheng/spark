@@ -1,6 +1,6 @@
 package org.apache.spark.streaming.sstream
 
-import org.apache.spark.{HashPartitioner, OutputSelector, Partitioner, SplitDependency}
+import org.apache.spark._
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.Serializer
@@ -34,11 +34,26 @@ class SRDDPairFunctions[K, V](self: SRDD[(K, V)])
     new SRDD[(WindowIdentifier, Iterator[OUT])](self.ssc, windowRDD)
   }
 
+  def groupByKey(
+    partitioner: Partitioner,
+    serializer: Serializer = null): SRDD[(K, V)] = {
+    require(partitioner != null, "partition can not be null")
+    val partitioners = Array.fill(1)(partitioner)
+    val splitsNames = Array.fill(1)("default")
+    val outputSelector = new OutputSelector[K, String] {
+      override def select(key: K): Array[String] = {
+        Array.fill(1)("default")
+      }
+    }
+
+    splitByKey(partitioners, splitsNames, outputSelector, serializer)(0)._2
+  }
+
   def splitByKey(
     partitioners: Array[Partitioner],
-    splitNames: List[String],
+    splitNames: Array[String],
     outputSelector: OutputSelector[K, String],
-    serializer: Serializer): Array[(String, SRDD[(K, V)])] = {
+    userSpecifiedSerializer: Serializer = null): Array[(String, SRDD[(K, V)])] = {
 
     require(splitNames != null, "splitNames should not be null")
     require(splitNames.forall(_ != null), "splitNames should not contain null value")
@@ -54,6 +69,7 @@ class SRDDPairFunctions[K, V](self: SRDD[(K, V)])
 
     val ret = new Array[(String, SRDD[(K, V)])](splitNames.length)
 
+    val serializer = if (userSpecifiedSerializer == null) SparkEnv.get.serializer else userSpecifiedSerializer
     splitNames.zipWithIndex.foreach(
       nameIndex => {
         val index = nameIndex._2
