@@ -343,7 +343,9 @@ class TimeWindowBuffer[T](
     }else{
       val windowEndTimestamp = latticeIdentifier.startTimestamp + latticeSize
       val windowIdentifer = TimeWindowIdentifier(windowEndTimestamp - windowDuration.toMillis, windowDuration)
-      Some((windowIdentifer, previousNLattices.flatMap(_.internalBuffer)))
+      val buffer: ArrayBuffer[T] = new ArrayBuffer()
+      previousNLattices.flatMap(_.internalBuffer).copyToBuffer(buffer)
+      Some((windowIdentifer, buffer))
     }
   }
 

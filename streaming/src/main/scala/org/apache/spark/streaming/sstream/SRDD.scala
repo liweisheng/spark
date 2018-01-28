@@ -3,6 +3,7 @@ package org.apache.spark.streaming.sstream
 import org.apache.spark.rdd.{PairRDDFunctions, RDD}
 import org.apache.spark.shuffle.pipeline.PipelineEvent
 import org.apache.spark.streaming.cep.nfa.Pattern
+import org.apache.spark.streaming.window.{Window, WindowIdentifier}
 
 import scala.reflect.ClassTag
 
@@ -86,7 +87,7 @@ class SRDD[T: ClassTag] private[spark] (
     new SRDD[U](ssc, patternRDD)
   }
 
-  def foreach(f: T => Unit) = {
+  def foreachStream(f: T => Unit) = {
     val cleanF = ssc.sc.clean(f)
     val foreachFunc = (e: PipelineEvent[T]) => {
       var ret: Boolean = true
@@ -101,7 +102,7 @@ class SRDD[T: ClassTag] private[spark] (
       }
     }
 
-    internalRDD.foreach(foreachFunc)
+    internalRDD.foreachStream(foreachFunc)
   }
 }
 

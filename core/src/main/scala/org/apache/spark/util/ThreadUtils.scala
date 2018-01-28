@@ -56,6 +56,11 @@ private[spark] object ThreadUtils {
     Executors.newCachedThreadPool(threadFactory).asInstanceOf[ThreadPoolExecutor]
   }
 
+  def newDaemonScheduledThreadPool(coreSize:Int, prefix: String): ScheduledThreadPoolExecutor = {
+    val threadFactory = namedThreadFactory(prefix)
+    Executors.newScheduledThreadPool(coreSize, threadFactory).asInstanceOf[ScheduledThreadPoolExecutor]
+  }
+
   /**
    * Create a cached thread pool whose max number of threads is `maxThreadNumber`. Thread names
    * are formatted as prefix-ID, where ID is a unique, sequentially assigned integer.

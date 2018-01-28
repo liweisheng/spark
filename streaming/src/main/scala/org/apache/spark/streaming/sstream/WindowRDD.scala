@@ -19,29 +19,31 @@ package org.apache.spark.streaming.sstream
 
 import java.util.concurrent.{ExecutorService, Executors, LinkedBlockingDeque, TimeUnit}
 
+import org.apache.spark.internal.Logging
 import org.apache.spark.{Partition, SparkContext, TaskContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.shuffle.pipeline.PipelineEvent
 import org.apache.spark.streaming.window.{TriggerCallback, Window, WindowIdentifier}
-import org.apache.spark.util.NextIterator
+import org.apache.spark.util.{NextIterator, ThreadUtils}
 
 import scala.reflect.ClassTag
 
 private[spark] class WindowRDD[IN: ClassTag, OUT: ClassTag](
     var prev: RDD[PipelineEvent[IN]],
     private val window: Window[IN, OUT])
-  extends RDD[PipelineEvent[(WindowIdentifier, Iterator[OUT])]](prev){
+  extends RDD[PipelineEvent[(WindowIdentifier, Iterator[OUT])]](prev) with Logging{
 
   require(window != null, "window should not be null!")
 
-  private[this] val defaultTriggerCallback = new DefaultTriggerCallback[OUT]
+  @transient
+  private[this] lazy val defaultTriggerCallback = new DefaultTriggerCallback[OUT]
 
   @transient
-  private[this] var _executor: ExecutorService = null.asInstanceOf[ExecutorService]
+  private[this]  var _executor: ExecutorService = null.asInstanceOf[ExecutorService]
 
-  private[this] def executor(): ExecutorService = {
+  private[this] def executor(index: Int): ExecutorService = synchronized {
     if(_executor == null) {
-      _executor = Executors.newFixedThreadPool(1)
+      _executor = ThreadUtils.newDaemonFixedThreadPool(1, s"WindowRDD_window_part_${index}")
     }
 
     _executor
@@ -50,7 +52,7 @@ private[spark] class WindowRDD[IN: ClassTag, OUT: ClassTag](
   override def compute(split: Partition, context: TaskContext):
     Iterator[PipelineEvent[(WindowIdentifier, Iterator[OUT])]] = {
     window.start(defaultTriggerCallback)
-    executor.submit(new Runnable {
+    executor(split.index).submit(new Runnable {
       override def run() = {
         val parentIter = firstParent[PipelineEvent[IN]].iterator(split, context)
         while(parentIter.hasNext) {

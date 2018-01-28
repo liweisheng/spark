@@ -17,15 +17,17 @@
 
 package org.apache.spark.streaming.window
 
-import java.util.concurrent.{Executors, TimeUnit}
+import java.util.concurrent.{Executors, ThreadFactory, TimeUnit}
 
+import org.apache.spark.internal.Logging
 import org.apache.spark.streaming.window.TriggerPolicy.TriggerPolicy
+import org.apache.spark.util.ThreadUtils
 
 import scala.concurrent.duration.Duration
 import scala.reflect.ClassTag
 
 
-abstract class Window[IN: ClassTag, OUT: ClassTag] extends Serializable{
+abstract class Window[IN: ClassTag, OUT: ClassTag] extends Serializable with Logging{
   private[this] var triggerPolicy: TriggerPolicy = _
   private[this] var computation: WindowComputation[OUT] = _
 
@@ -71,16 +73,17 @@ class SlideWindow[IN: ClassTag, OUT: ClassTag](
   private val slideDuration: Duration,
   private val windowDuration: Duration,
   private val allowedLatency: Duration = Duration(0, TimeUnit.MILLISECONDS))
-  extends Window[IN, OUT]{
+  extends Window[IN, OUT] with Logging{
 
-  private[this] val executor = Executors.newScheduledThreadPool(1)
+  private[this] lazy val executor = ThreadUtils.newDaemonScheduledThreadPool(1,
+    s"SlideWindow_${slideDuration}_${windowDuration}_${allowedLatency}")
 
-  private[this] val windowBuffer = new TimeWindowBuffer[IN](slideDuration, windowDuration, allowedLatency)
+  private[this] lazy val windowBuffer = new TimeWindowBuffer[IN](slideDuration, windowDuration, allowedLatency)
 
-  private[this] val periodicTriggerTask = new Runnable {
+  private[this] lazy val periodicTriggerTask = new Runnable {
     override def run() = {
       val windows = windowBuffer.triggerNext()
-      println(s"task invoked at ${System.currentTimeMillis()}")
+      logDebug(s"window trigger at ${System.currentTimeMillis()}, window size: ${windows.size}")
       for(window <- windows){
         if(!window._2.isEmpty){
           val newWindowComputation = newComputationInstance(window._2.iterator)
@@ -112,7 +115,8 @@ class SlideWindow[IN: ClassTag, OUT: ClassTag](
 
   override def start(triggerCallback: TriggerCallback[OUT]): Unit = {
     super.start(triggerCallback)
-    println("start time window...")
+    logInfo(s"window start, slideDuration:${slideDuration}, windowSize:${windowDuration}, " +
+      s"allowLatency:${allowedLatency}")
     executor.scheduleAtFixedRate(
       periodicTriggerTask,
       allowedLatency.toMillis,
@@ -121,6 +125,8 @@ class SlideWindow[IN: ClassTag, OUT: ClassTag](
   }
 
   override def stop(): Unit = {
+    logInfo(s"window stop, slideDuration:${slideDuration}, windowSize:${windowDuration}, " +
+      s"allowLatency:${allowedLatency}")
     executor.shutdown()
   }
 }

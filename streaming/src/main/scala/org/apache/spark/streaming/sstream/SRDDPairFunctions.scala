@@ -15,7 +15,6 @@ class SRDDPairFunctions[K, V](self: SRDD[(K, V)])
 
   def groupByKeyAndWindow[OUT: ClassTag](
       window: Window[(K, V), OUT],
-      numPartitions: Int,
       part: Partitioner,
       serializer: Serializer): SRDD[(WindowIdentifier, Iterator[OUT])] ={
     val splits = Array[Int](0)
@@ -61,8 +60,8 @@ class SRDDPairFunctions[K, V](self: SRDD[(K, V)])
     require(partitioners.length == splitNames.length, s"partitioner length: ${partitioners.length}," +
       s" expected:${splitNames.length}")
 
-    val splits = new Array[Int](splitNames.length)
-    val splitAliases = Array[Any](splitNames.length)
+    val splits = (0 to splitNames.length - 1).toArray
+    val splitAliases = new Array[Any](splitNames.length)
     splitNames.zipWithIndex.map(nameIndex => splitAliases(nameIndex._2) = nameIndex._1)
     val prev= self.internalRDD.asInstanceOf[RDD[PipelineEvent[_ <: Product2[K, V]]]]
     val shuffleId = prev.context.newShuffleId()

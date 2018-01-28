@@ -46,7 +46,9 @@ class PipelineShuffleReader[K, C](
       dep.splitIndex,
       partition)
 
-    val serializerInstance = dep.serializer.newInstance()
+    val serializerInstance = if(dep.serializer != null) { dep.serializer.newInstance() }
+       else {SparkEnv.get.serializer.newInstance()}
+
     val pipelineEventSerDe = new PipelineEventSerDe[K, C](serializerInstance)
 
     val recordIter = wrappedPipelineStreams.flatMap {

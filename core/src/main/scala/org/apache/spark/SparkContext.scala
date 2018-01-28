@@ -2025,6 +2025,25 @@ class SparkContext(config: SparkConf) extends Logging {
     rdd.doCheckpoint()
   }
 
+  def runJobWithoutWait[T, U: ClassTag](
+                              rdd: RDD[T],
+                              func: (TaskContext, Iterator[T]) => U,
+                              partitions: Seq[Int],
+                              resultHandler: (Int, U) => Unit): JobWaiter[U] = {
+    if (stopped.get()) {
+      throw new IllegalStateException("SparkContext has been shutdown")
+    }
+    val callSite = getCallSite
+    val cleanedFunc = clean(func)
+    logInfo("Starting job: " + callSite.shortForm)
+    if (conf.getBoolean("spark.logLineage", false)) {
+      logInfo("RDD's recursive dependencies:\n" + rdd.toDebugString)
+    }
+    val waiter = dagScheduler.runJobWithoutWait(rdd, cleanedFunc, partitions, callSite, resultHandler, localProperties.get)
+    progressBar.foreach(_.finishAll())
+    waiter
+  }
+
   /**
    * Run a function on a given set of partitions in an RDD and return the results as an array.
    * The function that is run against each partition additionally takes `TaskContext` argument.
@@ -2045,6 +2064,14 @@ class SparkContext(config: SparkConf) extends Logging {
     results
   }
 
+  def runJobWithoutWait[T, U: ClassTag](
+                              rdd: RDD[T],
+                              func: (TaskContext, Iterator[T]) => U,
+                              partitions: Seq[Int]): JobWaiter[U]= {
+    val results = new Array[U](partitions.size)
+    runJobWithoutWait[T, U](rdd, func, partitions, (index, res) => results(index) = res)
+  }
+
   /**
    * Run a function on a given set of partitions in an RDD and return the results as an array.
    *
@@ -2061,6 +2088,14 @@ class SparkContext(config: SparkConf) extends Logging {
       partitions: Seq[Int]): Array[U] = {
     val cleanedFunc = clean(func)
     runJob(rdd, (ctx: TaskContext, it: Iterator[T]) => cleanedFunc(it), partitions)
+  }
+
+  def runJobWithoutWait[T, U: ClassTag](
+                              rdd: RDD[T],
+                              func: Iterator[T] => U,
+                              partitions: Seq[Int]): JobWaiter[U] = {
+    val cleanedFunc = clean(func)
+    runJobWithoutWait(rdd, (ctx: TaskContext, it: Iterator[T]) => cleanedFunc(it), partitions)
   }
 
   /**
@@ -2086,6 +2121,10 @@ class SparkContext(config: SparkConf) extends Logging {
    */
   def runJob[T, U: ClassTag](rdd: RDD[T], func: Iterator[T] => U): Array[U] = {
     runJob(rdd, func, 0 until rdd.partitions.length)
+  }
+
+  def runJobWithoutWait[T, U: ClassTag](rdd: RDD[T], func: Iterator[T] => U): JobWaiter[U] = {
+    runJobWithoutWait(rdd, func, 0 until rdd.partitions.length)
   }
 
   /**

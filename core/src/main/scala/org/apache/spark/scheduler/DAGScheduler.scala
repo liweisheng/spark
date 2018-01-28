@@ -671,6 +671,22 @@ class DAGScheduler(
     }
   }
 
+  def runJobWithoutWait[T, U](
+                    rdd: RDD[T],
+                    func: (TaskContext, Iterator[T]) => U,
+                    partitions: Seq[Int],
+                    callSite: CallSite,
+                    resultHandler: (Int, U) => Unit,
+                    properties: Properties): JobWaiter[U] = {
+    val start = System.nanoTime
+    val waiter = submitJob(rdd, func, partitions, callSite, resultHandler, properties)
+    // Note: Do not call Await.ready(future) because that calls `scala.concurrent.blocking`,
+    // which causes concurrent SQL executions to fail if a fork-join pool is used. Note that
+    // due to idiosyncrasies in Scala, `awaitPermission` is not actually used anywhere so it's
+    // safe to pass in null here. For more detail, see SPARK-13747.
+    waiter
+  }
+
   /**
    * Run an approximate job on the given RDD and pass all the results to an ApproximateEvaluator
    * as they arrive. Returns a partial result object from the evaluator.
@@ -880,7 +896,7 @@ class DAGScheduler(
       partitions: Array[Int],
       callSite: CallSite,
       listener: JobListener,
-      properties: Properties) {
+      properties: Properties)  {
     var finalStage: ResultStage = null
     try {
       // New stage creation may throw an exception if, for example, jobs are run on a
@@ -1149,7 +1165,7 @@ class DAGScheduler(
     }
   }
 
-  private[scheduler] def handlePipelineTaskEvent(event: PipelineTaskEvent): Unit = {
+  private[scheduler] def handlePipelineTaskEvent(event: PipelineTaskEvent): Unit = synchronized {
     val task = event.task
     val taskId = event.taskInfo.id
     val stageID = task.stageId
@@ -1803,7 +1819,9 @@ private[scheduler] class DAGSchedulerEventProcessLoop(dagScheduler: DAGScheduler
 
   private def doOnReceive(event: DAGSchedulerEvent): Unit = event match {
     case JobSubmitted(jobId, rdd, func, partitions, callSite, listener, properties) =>
-      dagScheduler.handleJobSubmitted(jobId, rdd, func, partitions, callSite, listener, properties)
+      this.synchronized {
+        dagScheduler.handleJobSubmitted(jobId, rdd, func, partitions, callSite, listener, properties)
+      }
 
     case MapStageSubmitted(jobId, dependency, callSite, listener, properties) =>
       dagScheduler.handleMapStageSubmitted(jobId, dependency, callSite, listener, properties)
@@ -1841,8 +1859,11 @@ private[scheduler] class DAGSchedulerEventProcessLoop(dagScheduler: DAGScheduler
 
     case completion: CompletionEvent =>
       dagScheduler.handleTaskCompletion(completion)
+
     case pipelineTaskEvent: PipelineTaskEvent =>
-      dagScheduler.handlePipelineTaskEvent(pipelineTaskEvent)
+      this.synchronized {
+        dagScheduler.handlePipelineTaskEvent(pipelineTaskEvent)
+      }
 
     case ResubmitFailedStages =>
       dagScheduler.resubmitFailedStages()
