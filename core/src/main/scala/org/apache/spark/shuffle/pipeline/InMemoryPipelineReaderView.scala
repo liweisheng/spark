@@ -70,16 +70,17 @@ class InMemoryPipelineReaderView[K, V](
       if(dataAndSize._1 == null && !inMemorySubPipeline.hasMoreData()){
         sendCallback.notifyPipelineEnd()
       }else{
-        Future {
+//        Future {
+//          serializeAndSend(dataAndSize, sendCallback)
+//        }
           serializeAndSend(dataAndSize, sendCallback)
-        }
       }
     } else if(fetchId < lastFetchId){
       logWarning(s"fetchId:${fetchId} is less than lastFetchId:${lastFetchId}, omit this fetch." +
         s" reduceId:${reduceId}, pipelineReaderViewId:${pipelineReaderViewId}")
     } else if(fetchId > lastFetchId + 1){
-      logWarning(s"Receive unordered fetchId:$fetchId, lastFetchId:${lastFetchId}, add into waitingFetchIds")
-      waitingFetchIds += fetchId
+      logWarning(s"Receive unordered fetchId:$fetchId, lastFetchId:${lastFetchId}, omit it")
+//      waitingFetchIds += fetchId
     }
   }
 
